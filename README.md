@@ -1,6 +1,6 @@
 # vcpp-emulator
 
-vcpp 充电桩设备模拟器，完全模拟桩侧数据通信，作为 client 端连接服务端 [`vcpp`](../vcpp)。技术栈为 **Go + go-zero**，零外部依赖（不引入 redis / 数据库 / MQ）。
+vcpp 充电桩设备模拟器，完全模拟桩侧数据通信，作为 client 端连接服务端 [`vcpp`](https://github.com/vbeats/vcpp)。技术栈为 **Go + go-zero**，零外部依赖（不引入 redis / 数据库 / MQ）。
 
 当前实现云快充 **V1.7**（服务端端口 9849），可同时模拟多个桩；同一时刻只连接一个 server 端。
 
@@ -129,5 +129,5 @@ goctl api go -api api/emulator.api -dir . --style gozero
 ## 已知限制
 
 - 仅实现云快充 V1.7；V15/V16/V18/V21 与 OCPP 预留了扩展点但未实现。
-- 交易记录帧类型由版本决定：V15/V16 发 `0x3B`，V17 起发 `0x3D`。当前 `vcpp` 只注册了 V15/V16 的 `0x3B` 执行器，因此用 V1.7 上送交易记录时服务端不会回 `0x40` 确认，模拟器会在重传次数用尽后告警；待服务端补齐 `0x3D` 执行器即可（见 `vcpp/AGENTS.md` 待办）。
+- 交易记录帧类型由版本决定：V15/V16 发 `0x3B`，V17 起发 `0x3D`。当前 `vcpp` 只注册了 V15/V16 的 `0x3B` 执行器，因此用 V1.7 上送交易记录时服务端不会回 `0x40` 确认，模拟器会在重传次数用尽后告警；待服务端补齐 `0x3D` 执行器即可（已登记在 [`vcpp`](https://github.com/vbeats/vcpp) 仓库的 `AGENTS.md` 待办中）。
 - 数据仅内存与日志，进程重启后不保留。
