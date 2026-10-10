@@ -1,0 +1,66 @@
+syntax = "v1"
+
+type (
+	DeviceRequest {
+		DeviceNo string `json:"deviceNo"`
+	}
+	GunRequest {
+		DeviceNo string `json:"deviceNo"`
+		GunNo    int    `json:"gunNo,optional"`
+	}
+	GunStatus {
+		GunNo      int     `json:"gunNo"`
+		Charging   bool    `json:"charging"`
+		TradeNo    string  `json:"tradeNo"`
+		StartAt    string  `json:"startAt"`
+		ElapsedSec int     `json:"elapsedSec"`
+		Soc        int     `json:"soc"`
+		VoltageV   float64 `json:"voltageV"`
+		CurrentA   float64 `json:"currentA"`
+		EnergyKwh  float64 `json:"energyKwh"`
+		AmountYuan float64 `json:"amountYuan"`
+		StoppedBy  string  `json:"stoppedBy"`
+	}
+	DeviceStatus {
+		DeviceNo     string      `json:"deviceNo"`
+		GunCount     int         `json:"gunCount"`
+		Running      bool        `json:"running"`
+		Connected    bool        `json:"connected"`
+		Stage        string      `json:"stage"`
+		Server       string      `json:"server"`
+		Protocol     string      `json:"protocol"`
+		BillingModel string      `json:"billingModel"`
+		Guns         []GunStatus `json:"guns"`
+	}
+	DeviceListResponse {
+		Code    int            `json:"code"`
+		Msg     string         `json:"msg"`
+		Server  string         `json:"server"`
+		Devices []DeviceStatus `json:"devices"`
+	}
+	BaseResponse {
+		Code int    `json:"code"`
+		Msg  string `json:"msg"`
+	}
+)
+
+@server (
+	prefix: /api/v1
+)
+service emulator-api {
+	@handler ListDevices
+	get /devices returns (DeviceListResponse)
+
+	@handler StartDevice
+	post /devices/start (DeviceRequest) returns (BaseResponse)
+
+	@handler StopDevice
+	post /devices/stop (DeviceRequest) returns (BaseResponse)
+
+	@handler StartCharge
+	post /charge/start (GunRequest) returns (BaseResponse)
+
+	@handler StopCharge
+	post /charge/stop (GunRequest) returns (BaseResponse)
+}
+
