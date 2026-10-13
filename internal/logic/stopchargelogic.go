@@ -26,16 +26,17 @@ func NewStopChargeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *StopCh
 	}
 }
 
-// StopCharge 手动终止指定枪充电，会走中止帧与交易记录上送。
+// StopCharge 远程停机：按桩号 + 枪号终止充电，会走中止帧与交易记录上送。
 func (l *StopChargeLogic) StopCharge(req *types.GunRequest) (resp *types.BaseResponse, err error) {
-	if req.DeviceNo == "" {
-		return &types.BaseResponse{Code: 1, Msg: "deviceNo 不能为空"}, nil
+	no, perr := parseDeviceNo(req.DeviceNo)
+	if perr != nil {
+		return &types.BaseResponse{Code: 1, Msg: perr.Error()}, nil
 	}
-	gun := req.GunNo
-	if gun <= 0 {
-		gun = 1
+	gun, gerr := parseGunNo(req.GunNo)
+	if gerr != nil {
+		return &types.BaseResponse{Code: 1, Msg: gerr.Error()}, nil
 	}
-	if err = l.svcCtx.Manager.TriggerStop(req.DeviceNo, gun); err != nil {
+	if err = l.svcCtx.Manager.TriggerStop(no, gun); err != nil {
 		return &types.BaseResponse{Code: 1, Msg: err.Error()}, nil
 	}
 	return &types.BaseResponse{Code: 0, Msg: "ok"}, nil

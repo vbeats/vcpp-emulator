@@ -59,8 +59,8 @@ func TestLoginAckDecode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析失败: %v", err)
 	}
-	if deviceNo != "20260501000001" {
-		t.Fatalf("桩号不符: %s", deviceNo)
+	if deviceNo != 20260501000001 {
+		t.Fatalf("桩号不符: %014d", deviceNo)
 	}
 	if result != 0x00 {
 		t.Fatalf("登录结果不符: %d", result)
@@ -127,8 +127,8 @@ func TestRemoteStartDecode(t *testing.T) {
 	if v.TradeNo != "55031412782305012018061914444680" {
 		t.Fatalf("交易流水号不符: %s", v.TradeNo)
 	}
-	if v.DeviceNo != "55031412782305" || v.Gun != 1 {
-		t.Fatalf("桩号/枪号不符: %s %d", v.DeviceNo, v.Gun)
+	if v.DeviceNo != 55031412782305 || v.Gun != 1 {
+		t.Fatalf("桩号/枪号不符: %014d %d", v.DeviceNo, v.Gun)
 	}
 	if v.LogicCard != "0000001000000573" {
 		t.Fatalf("逻辑卡号不符: %s", v.LogicCard)
@@ -158,7 +158,7 @@ func TestEncodeSamples(t *testing.T) {
 	c := NewCodec("V17")
 
 	loginBody, _ := EncodeLogin(LoginInfo{
-		DeviceNo:   "20260501000001",
+		DeviceNo:   20260501000001,
 		PileType:   0,
 		GunCount:   2,
 		ProtoVer:   0x0F,
@@ -172,24 +172,24 @@ func TestEncodeSamples(t *testing.T) {
 		t.Fatalf("登录帧不符:\n%s", got)
 	}
 
-	hbBody, _ := EncodeHeartbeat("20260501000001", 0x01, 0x00)
+	hbBody, _ := EncodeHeartbeat(20260501000001, 0x01, 0x00)
 	if got := hexUpper(c.Encode(79, 0, TypeHeartbeat, hbBody)); got != "680D4F0000032026050100000101000659" {
 		t.Fatalf("心跳帧不符:\n%s", got)
 	}
 
-	bvBody, _ := EncodeBillingVerify("20260501000001", "0000")
+	bvBody, _ := EncodeBillingVerify(20260501000001, "0000")
 	if got := hexUpper(c.Encode(0, 0, TypeBillingVerify, bvBody)); got != "680D000000052026050100000100000D19" {
 		t.Fatalf("计费模型验证帧不符:\n%s", got)
 	}
 
-	bmBody, _ := EncodeBillingModelRequest("20260501000001")
+	bmBody, _ := EncodeBillingModelRequest(20260501000001)
 	if got := hexUpper(c.Encode(0, 0, TypeBillingModel, bmBody)); got != "680B0000000920260501000001EC76" {
 		t.Fatalf("计费模型请求帧不符:\n%s", got)
 	}
 
 	bmsBody, _ := EncodeBmsStatus(BmsStatusInfo{
 		TradeNo:      "20260501000001012606121004475025",
-		DeviceNo:     "20260501000001",
+		DeviceNo:     20260501000001,
 		Gun:          0x01,
 		MaxCellNo:    2,
 		BattMaxTempC: 25,
@@ -204,21 +204,21 @@ func TestEncodeSamples(t *testing.T) {
 		t.Fatalf("BMS 信息帧不符:\n%s", got)
 	}
 
-	startAckBody, _ := EncodeRemoteStartAck("20260501000001012606120953054043", "20260501000001", 0x01, 0x01, 0x00)
+	startAckBody, _ := EncodeRemoteStartAck("20260501000001012606120953054043", 20260501000001, 0x01, 0x01, 0x00)
 	if got := hexUpper(c.Encode(0, 0, TypeRemoteStartAck, startAckBody)); got !=
 		"681E0000003320260501000001012606120953054043202605010000010101001976" {
 		t.Fatalf("远程启机回复帧不符:\n%s", got)
 	}
 
 	// 协议正文的 0x35 样例序列号为 0003，与上行小端不同，故只比对消息体
-	stopAckBody, _ := EncodeRemoteStopAck("32010200000001", 0x01, 0x01, 0x00)
+	stopAckBody, _ := EncodeRemoteStopAck(32010200000001, 0x01, 0x01, 0x00)
 	if got := hexUpper(stopAckBody); got != "32010200000001010100" {
 		t.Fatalf("远程停机回复消息体不符:\n%s", got)
 	}
 
 	stopBody, _ := EncodeStopReason(StopReasonInfo{
 		TradeNo:  "20260501000001012606121004475025",
-		DeviceNo: "20260501000001",
+		DeviceNo: 20260501000001,
 		Gun:      0x01,
 		Reason:   0x40,
 	})
@@ -232,7 +232,7 @@ func TestEncodeSamples(t *testing.T) {
 func TestTradeRecordLength(t *testing.T) {
 	base := TradeRecordInfo{
 		TradeNo:     "20260501000001012606121004475025",
-		DeviceNo:    "20260501000001",
+		DeviceNo:    20260501000001,
 		Gun:         0x01,
 		StartTime:   time.Date(2026, 6, 12, 10, 4, 47, 0, time.Local),
 		EndTime:     time.Date(2026, 6, 12, 10, 34, 47, 0, time.Local),
@@ -331,7 +331,7 @@ func TestTradeFrameType(t *testing.T) {
 
 // TestTradeNo 校验交易流水号规则（桩号 + 枪号 + 时间 + 序号，共 32 位）。
 func TestTradeNo(t *testing.T) {
-	no := TradeNo("20260501000001", 1, time.Date(2026, 6, 12, 9, 53, 5, 0, time.Local), 67)
+	no := TradeNo(20260501000001, 1, time.Date(2026, 6, 12, 9, 53, 5, 0, time.Local), 67)
 	if no != "20260501000001012606120953050067" {
 		t.Fatalf("交易流水号不符: %s", no)
 	}

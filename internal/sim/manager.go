@@ -19,9 +19,9 @@ type Manager struct {
 	logger *framelog.Logger
 
 	mu      sync.Mutex
-	piles   map[string]*Pile
-	order   []string
-	cancels map[string]context.CancelFunc
+	piles   map[uint64]*Pile
+	order   []uint64
+	cancels map[uint64]context.CancelFunc
 }
 
 // NewManager 按配置创建所有模拟桩（创建后未自动连接，需调用 StartDevice）。
@@ -36,12 +36,13 @@ func NewManager(cfg *config.Config) (*Manager, error) {
 		codec:   codec,
 		bill:    &billing.Cache{},
 		logger:  logger,
-		piles:   make(map[string]*Pile, len(cfg.Devices)),
-		cancels: make(map[string]context.CancelFunc, len(cfg.Devices)),
+		piles:   make(map[uint64]*Pile, len(cfg.Devices)),
+		cancels: make(map[uint64]context.CancelFunc, len(cfg.Devices)),
 	}
 	for _, d := range cfg.Devices {
-		m.piles[d.DeviceNo] = NewPile(cfg, d, codec, m.bill, logger)
-		m.order = append(m.order, d.DeviceNo)
+		no := uint64(d.DeviceNo)
+		m.piles[no] = NewPile(cfg, d, codec, m.bill, logger)
+		m.order = append(m.order, no)
 	}
 	return m, nil
 }
@@ -51,7 +52,7 @@ func (m *Manager) Start(ctx context.Context) int {
 	var n int
 	for _, d := range m.cfg.Devices {
 		if d.AutoStart {
-			if err := m.StartDevice(ctx, d.DeviceNo); err == nil {
+			if err := m.StartDevice(ctx, uint64(d.DeviceNo)); err == nil {
 				n++
 			}
 		}
@@ -60,12 +61,12 @@ func (m *Manager) Start(ctx context.Context) int {
 }
 
 // StartDevice 启动指定桩。
-func (m *Manager) StartDevice(ctx context.Context, deviceNo string) error {
+func (m *Manager) StartDevice(ctx context.Context, deviceNo uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, ok := m.piles[deviceNo]
 	if !ok {
-		return fmt.Errorf("桩 %s 不存在", deviceNo)
+		return fmt.Errorf("桩 %014d 不存在", deviceNo)
 	}
 	if _, running := m.cancels[deviceNo]; running {
 		return nil
@@ -79,7 +80,7 @@ func (m *Manager) StartDevice(ctx context.Context, deviceNo string) error {
 }
 
 // StopDevice 停止指定桩（正在充电的枪会先走终止与交易记录上送）。
-func (m *Manager) StopDevice(deviceNo string) error {
+func (m *Manager) StopDevice(deviceNo uint64) error {
 	p, err := m.pile(deviceNo)
 	if err != nil {
 		return err
@@ -98,7 +99,7 @@ func (m *Manager) StopDevice(deviceNo string) error {
 }
 
 // TriggerStart 手动触发指定枪启机。
-func (m *Manager) TriggerStart(deviceNo string, gunNo int) error {
+func (m *Manager) TriggerStart(deviceNo uint64, gunNo int) error {
 	p, err := m.pile(deviceNo)
 	if err != nil {
 		return err
@@ -107,7 +108,7 @@ func (m *Manager) TriggerStart(deviceNo string, gunNo int) error {
 }
 
 // TriggerStop 手动终止指定枪充电。
-func (m *Manager) TriggerStop(deviceNo string, gunNo int) error {
+func (m *Manager) TriggerStop(deviceNo uint64, gunNo int) error {
 	p, err := m.pile(deviceNo)
 	if err != nil {
 		return err
@@ -118,7 +119,7 @@ func (m *Manager) TriggerStop(deviceNo string, gunNo int) error {
 // StopAll 停止所有桩，用于优雅退出。
 func (m *Manager) StopAll() {
 	m.mu.Lock()
-	nos := append([]string(nil), m.order...)
+	nos := append([]uint64(nil), m.order...)
 	m.mu.Unlock()
 	for _, no := range nos {
 		if err := m.StopDevice(no); err != nil {
@@ -141,21 +142,21 @@ func (m *Manager) Status() []DeviceStatus {
 }
 
 // DeviceNos 返回全部桩号。
-func (m *Manager) DeviceNos() []string {
+func (m *Manager) DeviceNos() []uint64 {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	return append([]string(nil), m.order...)
+	return append([]uint64(nil), m.order...)
 }
 
 // Server 返回当前连接的 server 地址（同一时刻仅一个）。
 func (m *Manager) Server() string { return m.cfg.Addr() }
 
-func (m *Manager) pile(deviceNo string) (*Pile, error) {
+func (m *Manager) pile(deviceNo uint64) (*Pile, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	p, ok := m.piles[deviceNo]
 	if !ok {
-		return nil, fmt.Errorf("桩 %s 不存在", deviceNo)
+		return nil, fmt.Errorf("桩 %014d 不存在", deviceNo)
 	}
 	return p, nil
 }

@@ -5,6 +5,8 @@ import (
 	"strings"
 
 	"github.com/zeromicro/go-zero/rest"
+
+	"github.com/csf/vcpp-emulator/internal/protocol/ykc"
 )
 
 // Config 是模拟器的统一配置，对应 etc/emulator.yaml。
@@ -30,7 +32,7 @@ type ServerConfig struct {
 // ProtocolConfig 协议选择。帧格式、帧类型码、字节序等由协议规定，不在配置中暴露。
 type ProtocolConfig struct {
 	Type    string `json:",default=ykc"` // ykc | ocpp（ocpp 尚未实现）
-	Version string `json:",default=V17"` // 云快充版本标签
+	Version string `json:",default=V17"` // 云快充版本：V15 | V16 | V17
 }
 
 // TimingConfig 各类周期，单位秒。
@@ -60,8 +62,9 @@ type FrameLogConfig struct {
 }
 
 // DeviceConfig 单个模拟桩。
+// DeviceNo 云快充桩号：协议为 7 字节 BCD，即 14 位十进制数字，用整型表示。
 type DeviceConfig struct {
-	DeviceNo   string
+	DeviceNo   int64
 	GunCount   int     `json:",default=1"`
 	AutoStart  bool    `json:",default=true"`
 	PileType   int     `json:",default=0"`
@@ -72,8 +75,8 @@ type DeviceConfig struct {
 	VoltageV   float64 `json:",default=400"`
 }
 
-// ProtocolVersions 支持的云快充版本标签。
-var ProtocolVersions = []string{"V15", "V16", "V17", "V18", "V21"}
+// ProtocolVersions 已实现的云快充版本标签。V18/V21 尚未实现，配置会拒绝启动。
+var ProtocolVersions = []string{"V15", "V16", "V17"}
 
 // Validate 校验配置并返回首个人类可读的错误。
 func (c Config) Validate() error {
@@ -97,16 +100,13 @@ func (c Config) Validate() error {
 	if len(c.Devices) == 0 {
 		return fmt.Errorf("devices 至少配置一个模拟桩")
 	}
-	seen := make(map[string]struct{}, len(c.Devices))
+	seen := make(map[int64]struct{}, len(c.Devices))
 	for i, d := range c.Devices {
-		if len(d.DeviceNo) != 14 {
-			return fmt.Errorf("devices[%d].deviceNo 必须为 14 位，收到: %s", i, d.DeviceNo)
-		}
-		if !isDigits(d.DeviceNo) {
-			return fmt.Errorf("devices[%d].deviceNo 必须为数字，收到: %s", i, d.DeviceNo)
+		if d.DeviceNo <= 0 || d.DeviceNo > ykc.MaxDeviceNo {
+			return fmt.Errorf("devices[%d].deviceNo 必须为 1~14 位正整数，收到: %d", i, d.DeviceNo)
 		}
 		if _, ok := seen[d.DeviceNo]; ok {
-			return fmt.Errorf("devices[%d].deviceNo 重复: %s", i, d.DeviceNo)
+			return fmt.Errorf("devices[%d].deviceNo 重复: %014d", i, d.DeviceNo)
 		}
 		seen[d.DeviceNo] = struct{}{}
 		if d.GunCount <= 0 || d.GunCount > 255 {
@@ -136,11 +136,5 @@ func contains(set []string, v string) bool {
 	return false
 }
 
-func isDigits(s string) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] < '0' || s[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
+// DeviceNoText 返回桩号的 14 位字符串形式，用于日志与 HTTP 输出。
+func DeviceNoText(v int64) string { return fmt.Sprintf("%014d", v) }

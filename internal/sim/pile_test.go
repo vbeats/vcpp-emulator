@@ -18,7 +18,7 @@ import (
 	"github.com/csf/vcpp-emulator/internal/transport"
 )
 
-const testDeviceNo = "20260501000001"
+const testDeviceNo = 20260501000001
 
 func testConfig(port int) *config.Config {
 	c := &config.Config{}
@@ -155,33 +155,33 @@ func (s *stubServer) write(conn net.Conn, typ ykc.FrameType, body []byte) {
 
 const testTradeNo = "20260501000001012606120953054043"
 
-func bcd7Plus(deviceNo string, tail ...byte) []byte {
+func bcd7Plus(deviceNo uint64, tail ...byte) []byte {
 	w := ykc.NewW(16)
-	w.BCD(deviceNo, 7)
+	w.DeviceNo(deviceNo)
 	for _, b := range tail {
 		w.U8(b)
 	}
 	return w.Bytes()
 }
 
-func timeSyncBody(deviceNo string) []byte {
+func timeSyncBody(deviceNo uint64) []byte {
 	w := ykc.NewW(14)
-	w.BCD(deviceNo, 7)
+	w.DeviceNo(deviceNo)
 	w.Time7(time.Now())
 	return w.Bytes()
 }
 
-func verifyAckBody(deviceNo, modelNo string, result byte) []byte {
+func verifyAckBody(deviceNo uint64, modelNo string, result byte) []byte {
 	w := ykc.NewW(10)
-	w.BCD(deviceNo, 7)
+	w.DeviceNo(deviceNo)
 	w.BCD(modelNo, 2)
 	w.U8(result)
 	return w.Bytes()
 }
 
-func billingModelBody(deviceNo string) []byte {
+func billingModelBody(deviceNo uint64) []byte {
 	w := ykc.NewW(90)
-	w.BCD(deviceNo, 7)
+	w.DeviceNo(deviceNo)
 	w.BCD("0100", 2)
 	ep := [4]uint32{123000, 121000, 100000, 90000}
 	sp := [4]uint32{250000, 240000, 230000, 210000}
@@ -196,10 +196,10 @@ func billingModelBody(deviceNo string) []byte {
 	return w.Bytes()
 }
 
-func remoteStartBody(deviceNo string, gun byte) []byte {
+func remoteStartBody(deviceNo uint64, gun byte) []byte {
 	w := ykc.NewW(44)
 	w.BCD(testTradeNo, 16)
-	w.BCD(deviceNo, 7)
+	w.DeviceNo(deviceNo)
 	w.U8(gun)
 	w.BCD("0000001000000573", 8)
 	w.U64LE(0x540A4BD100000000)

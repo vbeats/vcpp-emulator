@@ -1,12 +1,11 @@
 syntax = "v1"
 
 type (
-	DeviceRequest {
-		DeviceNo string `json:"deviceNo"`
-	}
+	// 远程启机/停机按枪操作，桩号与枪号都是必填
+	// 枪号用 2 位字符串，与协议里「枪号 01/02」的书写习惯一致
 	GunRequest {
 		DeviceNo string `json:"deviceNo"`
-		GunNo    int    `json:"gunNo,optional"`
+		GunNo    string `json:"gunNo"`
 	}
 	GunStatus {
 		GunNo      int     `json:"gunNo"`
@@ -50,12 +49,6 @@ type (
 service emulator-api {
 	@handler ListDevices
 	get /devices returns (DeviceListResponse)
-
-	@handler StartDevice
-	post /devices/start (DeviceRequest) returns (BaseResponse)
-
-	@handler StopDevice
-	post /devices/stop (DeviceRequest) returns (BaseResponse)
 
 	@handler StartCharge
 	post /charge/start (GunRequest) returns (BaseResponse)

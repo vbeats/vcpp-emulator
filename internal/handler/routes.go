@@ -29,16 +29,6 @@ func RegisterHandlers(server *rest.Server, serverCtx *svc.ServiceContext) {
 				Path:    "/devices",
 				Handler: ListDevicesHandler(serverCtx),
 			},
-			{
-				Method:  http.MethodPost,
-				Path:    "/devices/start",
-				Handler: StartDeviceHandler(serverCtx),
-			},
-			{
-				Method:  http.MethodPost,
-				Path:    "/devices/stop",
-				Handler: StopDeviceHandler(serverCtx),
-			},
 		},
 		rest.WithPrefix("/api/v1"),
 	)

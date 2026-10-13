@@ -21,8 +21,9 @@ type CmdKind int
 const (
 	CmdDeviceStart CmdKind = iota // 启动桩
 	CmdDeviceStop                 // 停止桩
-	CmdGunStart                   // 手动触发启机
+	CmdGunStart                   // 手动触发启机（本地直接起，不回 0x33）
 	CmdGunStop                    // 手动触发终止
+	CmdCardStart                  // 模拟刷卡启动：上送 0x31，等待平台 0x32 确认
 )
 
 // Command HTTP 控制面下发给桩 Actor 的指令。
@@ -48,7 +49,7 @@ type GunStatus struct {
 	StoppedBy  string  `json:"stoppedBy"`
 }
 
-// DeviceStatus 单桩状态快照。
+// DeviceStatus 单桩状态快照。DeviceNo 输出为 14 位数字串，便于 HTTP 消费方直接比对。
 type DeviceStatus struct {
 	DeviceNo     string      `json:"deviceNo"`
 	GunCount     int         `json:"gunCount"`

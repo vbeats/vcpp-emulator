@@ -23,7 +23,7 @@ type Conn struct {
 	cfg      *config.Config
 	codec    protocol.Codec
 	logger   *framelog.Logger
-	deviceNo string
+	deviceNo uint64
 	onFrame  func(*ykc.Frame)
 	onState  func(connected bool)
 
@@ -37,7 +37,7 @@ type Conn struct {
 
 // NewConn 构造连接管理器。
 func NewConn(cfg *config.Config, codec protocol.Codec, logger *framelog.Logger,
-	deviceNo string, onFrame func(*ykc.Frame), onState func(connected bool)) *Conn {
+	deviceNo uint64, onFrame func(*ykc.Frame), onState func(connected bool)) *Conn {
 	c := &Conn{
 		cfg:      cfg,
 		codec:    codec,
@@ -50,7 +50,7 @@ func NewConn(cfg *config.Config, codec protocol.Codec, logger *framelog.Logger,
 	return c
 }
 
-// SetEnabled 控制是否允许发起/保持连接（HTTP 停止桩时使用）。
+// SetEnabled 控制是否允许发起/保持连接（停止桩或进程退出时使用）。
 func (c *Conn) SetEnabled(v bool) {
 	c.enabled.Store(v)
 	if !v {
@@ -71,7 +71,7 @@ func (c *Conn) Run(ctx context.Context) {
 		}
 		if err := c.serve(ctx); err != nil {
 			if ctx.Err() == nil {
-				logx.Errorf("【模拟器】桩号:%s 连接中断: %v，%s 后重连", c.deviceNo, err, interval)
+				logx.Errorf("【模拟器】桩号:%014d 连接中断: %v，%s 后重连", c.deviceNo, err, interval)
 			}
 		}
 		c.wait(ctx, interval)
@@ -157,7 +157,7 @@ func (c *Conn) writeLoop(nc net.Conn, ch <-chan []byte, done <-chan struct{}) {
 			return
 		case data := <-ch:
 			if _, err := nc.Write(data); err != nil {
-				logx.Errorf("【模拟器】桩号:%s 发送失败: %v", c.deviceNo, err)
+				logx.Errorf("【模拟器】桩号:%014d 发送失败: %v", c.deviceNo, err)
 				return
 			}
 		}
@@ -177,7 +177,7 @@ func (c *Conn) Send(data []byte) bool {
 		return true
 	default:
 		n := c.dropped.Add(1)
-		logx.Errorf("【模拟器】桩号:%s 发送队列已满，丢弃 %d 字节（累计丢弃 %d 次）",
+		logx.Errorf("【模拟器】桩号:%014d 发送队列已满，丢弃 %d 字节（累计丢弃 %d 次）",
 			c.deviceNo, len(data), n)
 		return false
 	}

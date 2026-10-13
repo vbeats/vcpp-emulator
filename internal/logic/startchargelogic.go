@@ -26,16 +26,17 @@ func NewStartChargeLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Start
 	}
 }
 
-// StartCharge 手动触发指定枪启机，等价于桩侧收到一次远程启机指令。
+// StartCharge 远程启机：按桩号 + 枪号启动一次充电，等价于桩侧收到平台的远程启机指令。
 func (l *StartChargeLogic) StartCharge(req *types.GunRequest) (resp *types.BaseResponse, err error) {
-	if req.DeviceNo == "" {
-		return &types.BaseResponse{Code: 1, Msg: "deviceNo 不能为空"}, nil
+	no, perr := parseDeviceNo(req.DeviceNo)
+	if perr != nil {
+		return &types.BaseResponse{Code: 1, Msg: perr.Error()}, nil
 	}
-	gun := req.GunNo
-	if gun <= 0 {
-		gun = 1
+	gun, gerr := parseGunNo(req.GunNo)
+	if gerr != nil {
+		return &types.BaseResponse{Code: 1, Msg: gerr.Error()}, nil
 	}
-	if err = l.svcCtx.Manager.TriggerStart(req.DeviceNo, gun); err != nil {
+	if err = l.svcCtx.Manager.TriggerStart(no, gun); err != nil {
 		return &types.BaseResponse{Code: 1, Msg: err.Error()}, nil
 	}
 	return &types.BaseResponse{Code: 0, Msg: "ok"}, nil

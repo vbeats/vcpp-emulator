@@ -3,6 +3,7 @@ package ykc
 import (
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -97,6 +98,34 @@ func (w *W) Temp(celsius int) {
 
 // Time7 写入 CP56Time2a 时间。
 func (w *W) Time7(t time.Time) { w.Raw(EncodeCP56(t)) }
+
+// ---------------- 桩号 ----------------
+
+// 云快充桩号在线上为 7 字节 BCD，即 14 位十进制数字，故内存一律用 uint64 表示。
+const (
+	DeviceNoDigits = 14
+	MaxDeviceNo    = 99999999999999 // 14 位最大值
+)
+
+// FormatDeviceNo 把桩号格式化为 14 位数字串（左侧补 0），用于 BCD 编码。
+func FormatDeviceNo(v uint64) string {
+	if v > MaxDeviceNo {
+		v %= MaxDeviceNo + 1
+	}
+	return fmt.Sprintf("%0*d", DeviceNoDigits, v)
+}
+
+// ParseDeviceNo 把 BCD 读出的数字串解析为桩号，非法内容返回 0。
+func ParseDeviceNo(s string) uint64 {
+	n, err := strconv.ParseUint(strings.TrimSpace(s), 10, 64)
+	if err != nil || n > MaxDeviceNo {
+		return 0
+	}
+	return n
+}
+
+// DeviceNo 写入 7 字节 BCD 桩号。
+func (w *W) DeviceNo(v uint64) { w.BCD(FormatDeviceNo(v), 7) }
 
 func hexVal(c byte) byte {
 	switch {
@@ -246,6 +275,9 @@ func (r *R) ASCII(n int) string {
 func (r *R) Temp() int {
 	return int(r.U8()) - 50
 }
+
+// DeviceNo 读取 7 字节 BCD 桩号并解析为 uint64。
+func (r *R) DeviceNo() uint64 { return ParseDeviceNo(r.BCD(7)) }
 
 // Time7 读取 CP56Time2a 时间。
 func (r *R) Time7() time.Time {

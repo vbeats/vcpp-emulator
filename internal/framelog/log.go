@@ -16,9 +16,10 @@ type Logger struct {
 
 // Frame 打印一帧通信报文。
 // dir=DirUp 表示上行（⬆️ 模拟器 -> server），dir=DirDown 表示下行（⬇️ server -> 模拟器）。
-func (l *Logger) Frame(dir ykc.Direction, version, deviceNo string, gun byte, typ ykc.FrameType, raw []byte, parsed string) {
+func (l *Logger) Frame(dir ykc.Direction, version string, deviceNo uint64, gun byte,
+	typ ykc.FrameType, raw []byte, parsed string) {
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("【云快充】%s 桩号:%s 枪号:%02d %s %s（0x%02X）",
+	sb.WriteString(fmt.Sprintf("【云快充】%s 桩号:%014d 枪号:%02d %s %s（0x%02X）",
 		version, deviceNo, gun, dir.String(), ykc.FrameName(typ), typ))
 	if l.Hex && len(raw) > 0 {
 		sb.WriteString("\nHEX: ")
@@ -33,13 +34,13 @@ func (l *Logger) Frame(dir ykc.Direction, version, deviceNo string, gun byte, ty
 }
 
 // Event 打印与帧无关的状态日志。
-func (l *Logger) Event(deviceNo string, gun byte, format string, args ...any) {
-	logx.Info(fmt.Sprintf("【模拟器】桩号:%s 枪号:%02d %s", deviceNo, gun, fmt.Sprintf(format, args...)))
+func (l *Logger) Event(deviceNo uint64, gun byte, format string, args ...any) {
+	logx.Info(fmt.Sprintf("【模拟器】桩号:%014d 枪号:%02d %s", deviceNo, gun, fmt.Sprintf(format, args...)))
 }
 
 // Eventf 打印桩级别的状态日志。
-func (l *Logger) Eventf(deviceNo, format string, args ...any) {
-	logx.Info(fmt.Sprintf("【模拟器】桩号:%s %s", deviceNo, fmt.Sprintf(format, args...)))
+func (l *Logger) Eventf(deviceNo uint64, format string, args ...any) {
+	logx.Info(fmt.Sprintf("【模拟器】桩号:%014d %s", deviceNo, fmt.Sprintf(format, args...)))
 }
 
 // Hex 输出大写、按字节空格分隔的十六进制串。

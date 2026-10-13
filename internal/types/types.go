@@ -15,10 +15,6 @@ type DeviceListResponse struct {
 	Devices []DeviceStatus `json:"devices"`
 }
 
-type DeviceRequest struct {
-	DeviceNo string `json:"deviceNo"`
-}
-
 type DeviceStatus struct {
 	DeviceNo     string      `json:"deviceNo"`
 	GunCount     int         `json:"gunCount"`
@@ -33,7 +29,7 @@ type DeviceStatus struct {
 
 type GunRequest struct {
 	DeviceNo string `json:"deviceNo"`
-	GunNo    int    `json:"gunNo,optional"`
+	GunNo    string `json:"gunNo"`
 }
 
 type GunStatus struct {

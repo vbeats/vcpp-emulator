@@ -6,23 +6,44 @@ Name: emulator
 Host: 0.0.0.0
 Port: 10010
 
-# 日志（go-zero logx）
+# 日志（go-zero logx；字段来自 rest.RestConf 内嵌的 logx.LogConf）
 Log:
   ServiceName: vcpp-emulator
+  # Mode 输出方式，默认 console：
+  #   console  只写控制台（stdout）
+  #   file     只写文件，目录为下面的 Path；logx 的 writer 被替换，业务日志不再打控制台
+  #            （go-zero 启动时的 Routes 路由清单由 fmt 直接打印，不受此项影响）
+  #   volume   k8s 场景写文件，目录为 Path/<ServiceName>/<主机名>，ServiceName 必填
+  #   填非法值会退化成 console
   Mode: console
+  # Level 日志级别，默认 info。级别由低到高 debug < info < error < severe，
+  # 只有不低于该级别的日志才会打印（info 会漏掉 debug，error 会漏掉 debug/info）
   Level: info
+  # Encoding 编码，默认 json：json 结构化（便于采集） | plain 纯文本（便于人看）
   Encoding: plain
   TimeFormat: "2006-01-02T15:04:05.000Z07:00"
+  # ---- 以下仅当 Mode 为 file / volume 时生效，需要时放开注释 ----
+  # Path: logs        # 日志目录，默认 logs
+  # Rotation: daily   # 轮转规则：daily 按天 | size 按大小，默认 daily
+  # KeepDays: 7       # 保留天数，daily/size 都生效，0 表示永久保留
+  # MaxSize: 100      # 单文件上限 MB，仅 Rotation: size 生效，0 表示不限
+  # MaxBackups: 5     # 保留的备份文件数，仅 Rotation: size 生效，0 表示全部保留
+  # Compress: true    # 轮转时是否压缩
 
 # server 端（vcpp）地址，同一时刻只允许连接一个 server
+# 端口需与协议版本对应：V15 -> 9847 / V16 -> 9848 / V17 -> 9849
 Server:
   Ip: 127.0.0.1
-  Port: 9849   # 云快充 V1.7
+  Port: 9847
 
-# 协议选择：帧格式、帧类型码、字节序等均由协议与各版本包自身决定，不在配置中暴露
+# 协议选择：帧格式、帧类型码、字节序、交易记录帧类型等均由协议与各版本包自身决定，不在配置中暴露
 Protocol:
   Type: ykc       # 当前仅支持 ykc，ocpp 预留
-  Version: V17    # 云快充 V15 | V16 | V17 | V18 | V21（当前仅实现 V17）
+  Version: V15    # 云快充 V15 | V16 | V17（V18 / V21 未实现）
+  # 版本差异（由 internal/protocol/ykc 按版本推导，无需配置）：
+  #   V15：交易记录 0x3B（无电表块），不支持并充 0xA1~0xA4
+  #   V16：交易记录 0x3B（无电表块），支持并充 0xA1~0xA4
+  #   V17：交易记录 0x3D（含电表块），支持并充 0xA1~0xA4
 
 # 周期，单位秒
 Timing:
@@ -48,8 +69,9 @@ FrameLog:
   Parsed: true    # 打印字段解析结果
 
 # 模拟桩列表，可同时模拟多个桩（每桩一条 TCP 连接）
+# DeviceNo 为云快充桩号：协议中是 7 字节 BCD，即 14 位十进制数字，故直接写整数
 Devices:
-  - DeviceNo: "20260501000001"
+  - DeviceNo: 20260501000001
     GunCount: 2
     AutoStart: true
     PileType: 0          # 0 直流桩 / 1 交流桩
@@ -58,7 +80,7 @@ Devices:
     Sim: "00000000000000000000"
     Supplier: 0          # 0 移动 / 2 电信 / 3 联通 / 4 其他
     VoltageV: 400
-  - DeviceNo: "20260501000002"
+  - DeviceNo: 20260501000002
     GunCount: 1
     AutoStart: false
     PileType: 0

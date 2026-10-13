@@ -17,8 +17,8 @@ func newCodec() protocol.Codec {
 // TestFramerStickyAndGarbage 校验拆帧能处理粘包、垃圾前缀与不完整尾帧。
 func TestFramerStickyAndGarbage(t *testing.T) {
 	c := newCodec()
-	body1, _ := ykc.EncodeHeartbeat("20260501000001", 0x01, 0x00)
-	body2, _ := ykc.EncodeBillingVerify("20260501000001", "0000")
+	body1, _ := ykc.EncodeHeartbeat(20260501000001, 0x01, 0x00)
+	body2, _ := ykc.EncodeBillingVerify(20260501000001, "0000")
 	f1 := c.Encode(1, 0, ykc.TypeHeartbeat, body1)
 	f2 := c.Encode(2, 0, ykc.TypeBillingVerify, body2)
 
@@ -52,8 +52,8 @@ func TestFramerStickyAndGarbage(t *testing.T) {
 // TestFramerBufferReuse 校验帧数据不会被后续读取覆盖（帧会异步交给 Actor 处理）。
 func TestFramerBufferReuse(t *testing.T) {
 	c := newCodec()
-	body1, _ := ykc.EncodeHeartbeat("20260501000001", 0x01, 0x00)
-	body2, _ := ykc.EncodeBillingVerify("20260501000001", "0000")
+	body1, _ := ykc.EncodeHeartbeat(20260501000001, 0x01, 0x00)
+	body2, _ := ykc.EncodeBillingVerify(20260501000001, "0000")
 	f1 := c.Encode(1, 0, ykc.TypeHeartbeat, body1)
 	f2 := c.Encode(2, 0, ykc.TypeBillingVerify, body2)
 
@@ -81,7 +81,7 @@ func TestFramerBufferReuse(t *testing.T) {
 // TestFramerCRCFail 校验 CRC 错误的帧会被丢弃并重新同步到下一帧。
 func TestFramerCRCFail(t *testing.T) {
 	c := newCodec()
-	body, _ := ykc.EncodeHeartbeat("20260501000001", 0x01, 0x00)
+	body, _ := ykc.EncodeHeartbeat(20260501000001, 0x01, 0x00)
 	bad := c.Encode(1, 0, ykc.TypeHeartbeat, body)
 	bad[len(bad)-1] ^= 0xFF
 	good := c.Encode(2, 0, ykc.TypeHeartbeat, body)
@@ -103,7 +103,7 @@ func TestFramerCRCFail(t *testing.T) {
 // TestFramerOversize 校验非法长度域（0）会被丢弃且不会误判为合法帧。
 func TestFramerOversize(t *testing.T) {
 	c := newCodec()
-	body, _ := ykc.EncodeHeartbeat("20260501000001", 0x01, 0x00)
+	body, _ := ykc.EncodeHeartbeat(20260501000001, 0x01, 0x00)
 	good := c.Encode(1, 0, ykc.TypeHeartbeat, body)
 
 	buf := bytes.NewBuffer([]byte{0x68, 0x00, 0x00, 0x00})
