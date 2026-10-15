@@ -12,6 +12,10 @@ vcpp 充电桩设备模拟器，完全模拟桩侧数据通信，作为 client �
 > 2. 建立 TCP 长连接，按周期上报桩侧数据，接收平台指令。
 > 3. 按平台指令与电价模型自行模拟电压、电流、温度等实时数据，最终生成模拟账单。
 
+## 架构
+
+![vcpp-emulator 架构图](./doc/vcpp-emulator-architecture.visual-check.1440x900.light.png)
+
 ## 快速开始
 
 ```powershell

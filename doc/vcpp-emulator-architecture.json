@@ -1,0 +1,205 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "vcpp-emulator 充电桩模拟器架构",
+    "locale": "zh-CN",
+    "quality_profile": "showcase",
+    "viewBox": [1100, 520],
+    "repository": {
+      "url": "https://github.com/vbeats/vcpp-emulator",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "68b758877b94e14ccff80f05644feff38278ceee"
+    },
+    "views": [
+      {
+        "id": "downlink",
+        "label": "下行收帧",
+        "focus": ["vcpp", "transport", "ykc", "pile"],
+        "note": "服务端下行帧经流式拆帧与 CRC16 校验后解码成事件，投递给对应桩的 Actor。"
+      },
+      {
+        "id": "uplink",
+        "label": "上行发帧",
+        "focus": ["pile", "transport", "vcpp", "framelog"],
+        "note": "桩按状态机推进，编码成帧写入发送队列，经长连接上送服务端并留痕。"
+      },
+      {
+        "id": "control",
+        "label": "HTTP 控制面",
+        "focus": ["ops", "http", "pile"],
+        "note": "状态查询与远程启机/停机经 go-zero 接口转发为命令事件，投递到指定桩。"
+      },
+      {
+        "id": "billing",
+        "label": "计费与精度",
+        "focus": ["pile", "billing"],
+        "note": "48 时段模型按帧长度识别 4 段 / 5 段，全程 int64 定点运算生成账单。"
+      }
+    ]
+  },
+  "components": [
+    {
+      "id": "vcpp",
+      "type": "external",
+      "label": "vcpp 服务端",
+      "sublabel": "云快充 1.5 ~ 2.1",
+      "tag": "9847-9851",
+      "pos": [26, 270],
+      "size": [118, 60]
+    },
+    {
+      "id": "transport",
+      "type": "backend",
+      "label": "TCP 连接与拆帧",
+      "sublabel": "transport · 标准库 net",
+      "tag": "10s 重连",
+      "pos": [196, 264],
+      "size": [132, 72],
+      "sources": [
+        { "path": "internal/transport/conn.go", "label": "连接、重连与读写循环" },
+        { "path": "internal/transport/framer.go", "label": "流式拆帧与重同步" }
+      ]
+    },
+    {
+      "id": "ykc",
+      "type": "backend",
+      "label": "云快充帧编解码",
+      "sublabel": "protocol/ykc · 纯函数",
+      "tag": "V15/V16/V17",
+      "pos": [378, 260],
+      "size": [136, 80],
+      "sources": [
+        { "path": "internal/protocol/ykc/frame.go", "label": "帧结构与版本常量" },
+        { "path": "internal/protocol/ykc/codec.go", "label": "编解码与序列号字节序" }
+      ]
+    },
+    {
+      "id": "pile",
+      "type": "backend",
+      "label": "桩 Actor 与状态机",
+      "sublabel": "sim · 每桩一 goroutine",
+      "tag": "串行无锁",
+      "pos": [564, 254],
+      "size": [148, 92],
+      "sources": [
+        { "path": "internal/sim/pile.go", "label": "状态机、定时器与充电流程" },
+        { "path": "internal/sim/event.go", "label": "阶段、事件与命令定义" },
+        { "path": "internal/sim/manager.go", "label": "桩注册表与启停" }
+      ]
+    },
+    {
+      "id": "http",
+      "type": "frontend",
+      "label": "go-zero HTTP 控制面",
+      "sublabel": "rest · 127.0.0.1:10010",
+      "tag": "三个接口",
+      "pos": [782, 264],
+      "size": [118, 72],
+      "sources": [
+        { "path": "internal/handler/routes.go", "label": "goctl 生成的路由" },
+        { "path": "internal/logic/startchargelogic.go", "label": "仅转发到 sim.Manager" }
+      ]
+    },
+    {
+      "id": "ops",
+      "type": "external",
+      "label": "运维 / 联调脚本",
+      "sublabel": "curl · Apifox",
+      "pos": [938, 270],
+      "size": [112, 60]
+    },
+    {
+      "id": "billing",
+      "type": "database",
+      "label": "计费模型缓存",
+      "sublabel": "48 时段 · 4 段 / 5 段",
+      "tag": "int64 定点",
+      "pos": [564, 80],
+      "size": [148, 60],
+      "sources": [
+        { "path": "internal/billing/model.go", "label": "费率模型与定点计费" }
+      ]
+    },
+    {
+      "id": "framelog",
+      "type": "backend",
+      "label": "报文日志",
+      "sublabel": "framelog · 内存输出",
+      "pos": [194, 80],
+      "size": [136, 60],
+      "sources": [
+        { "path": "internal/framelog/log.go", "label": "方向 + HEX + 字段解析" }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "vcpp-emulator 进程 · Go + go-zero",
+      "wraps": ["transport", "ykc", "pile", "http", "billing", "framelog"],
+      "pad": 26
+    },
+    {
+      "kind": "region",
+      "label": "服务端进程",
+      "wraps": ["vcpp"],
+      "pad": 16
+    }
+  ],
+  "connections": [
+    {
+      "from": "vcpp",
+      "to": "transport",
+      "label": "云快充 TCP 长连接",
+      "variant": "emphasis",
+      "labelDy": -60
+    },
+    { "from": "transport", "to": "ykc", "label": "下行字节流 · 0x68 拆帧 + CRC16", "labelDy": -60 },
+    { "from": "ykc", "to": "pile", "label": "解码为帧事件投递给 Actor", "labelDy": -60 },
+    {
+      "from": "pile",
+      "to": "transport",
+      "label": "经 ykc 编码后写入发送队列",
+      "fromSide": "bottom",
+      "toSide": "bottom",
+      "via": [[638, 440], [262, 440]],
+      "labelSegment": 1,
+      "labelDy": -14
+    },
+    { "from": "transport", "to": "framelog", "label": "收发报文留痕（HEX + 解析）", "variant": "dashed" },
+    { "from": "pile", "to": "billing", "label": "缓存 48 时段模型并按段计费" },
+    { "from": "ops", "to": "http", "label": "curl / Apifox 调用三个接口", "labelDy": -60 },
+    { "from": "http", "to": "pile", "label": "经 sim.Manager 转发为命令事件", "labelDy": -60 }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "协议栈",
+      "items": [
+        "已实现云快充 V1.5 / V1.6 / V1.7 全帧，V18 / V21 未实现",
+        "帧结构 0x68 起始 + 长度 + 序列号 + 加密标志 + 帧类型 + CRC16",
+        "版本差异由纯函数推导：ProtoVerByte / TradeFrameType / SupportsParallel"
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "运行模型",
+      "items": [
+        "每桩一个 Actor goroutine 串行处理帧、定时器与 API 命令",
+        "断线 10s 重连 · 每枪心跳 10s · 充电中 15s 上报",
+        "交易记录 V15、V16 发 0x3B，V17 起发 0x3D，未确认则重传"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "精度与边界",
+      "items": [
+        "电量与金额用 int64 定点 ×0.0001，费率与单价 ×0.00001",
+        "计费模型无模式字段，按帧长度识别：90B = 4 段，98B = 5 段",
+        "数据仅内存与日志，进程重启不保留；OCPP 仅预留协议入口"
+      ]
+    }
+  ]
+}
