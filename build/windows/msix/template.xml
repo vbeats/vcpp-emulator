@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<MsixPackagingToolTemplate
+    xmlns="http://schemas.microsoft.com/msix/packaging/msixpackagingtool/template/2022">
+    <Settings
+        AllowTelemetry="false"
+        ApplyACLsToPackageFiles="true"
+        GenerateCommandLineFile="true"
+        AllowPromptForPassword="false">
+    </Settings>
+    <Installer
+        Path="vcpp-emulator.exe"
+        Arguments=""
+        InstallLocation="C:\Program Files\CSF\充电桩模拟器">
+    </Installer>
+    <PackageInformation
+        PackageName="com.csf.vcpp-emulator"
+        PackageDisplayName="充电桩模拟器"
+        PublisherName="CN=CSF"
+        PublisherDisplayName="CSF"
+        Version="1.0.0.0"
+        PackageDescription="云快充协议充电桩设备模拟器">
+        <Capabilities>
+            <Capability Name="runFullTrust" />
+            
+        </Capabilities>
+        <Applications>
+            <Application
+                Id="com.csf.vcpp-emulator"
+                Description="云快充协议充电桩设备模拟器"
+                DisplayName="充电桩模拟器"
+                ExecutableName="vcpp-emulator.exe"
+                EntryPoint="Windows.FullTrustApplication">
+                
+            </Application>
+        </Applications>
+        <Resources>
+            <Resource Language="zh-cn" />
+        </Resources>
+        <Dependencies>
+            <!-- 目标 Windows 11 x64：最低构建 22000（Win11 21H2），已测试 26100（24H2） -->
+            <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+        </Dependencies>
+        <Properties>
+            <Framework>false</Framework>
+            <DisplayName>充电桩模拟器</DisplayName>
+            <PublisherDisplayName>CSF</PublisherDisplayName>
+            <Description>云快充协议充电桩设备模拟器</Description>
+            <Logo>Assets\AppIcon.png</Logo>
+        </Properties>
+    </PackageInformation>
+    <SaveLocation PackagePath="vcpp-emulator.msix" />
+    <PackageIntegrity>
+        <CertificatePath></CertificatePath>
+    </PackageIntegrity>
+</MsixPackagingToolTemplate>

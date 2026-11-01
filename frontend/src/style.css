@@ -1,0 +1,77 @@
+@import "tailwindcss";
+
+@theme {
+  /* 浅色主题：整套色板按「由浅到深」重排，ink-950 为页面底色，ink-600 为最深的边框色 */
+  --color-ink-950: #eef2f8;
+  --color-ink-900: #ffffff;
+  --color-ink-850: #f6f8fc;
+  --color-ink-800: #eff3f9;
+  --color-ink-700: #e2e8f3;
+  --color-ink-600: #ccd5e5;
+  --color-line: #dbe2ee;
+  --color-mute: #6f7b93;
+  --color-fg: #16213a;
+  --color-fg-soft: #4a5674;
+  --color-accent: #0e9f6e;
+  --color-accent-2: #3f63e8;
+  --font-mono: "JetBrains Mono", "SFMono-Regular", "Cascadia Mono", Consolas, monospace;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background:
+    radial-gradient(900px 500px at 12% -10%, rgba(63, 99, 232, 0.08), transparent 60%),
+    radial-gradient(700px 460px at 95% 0%, rgba(14, 159, 110, 0.08), transparent 55%),
+    var(--color-ink-950);
+  color: var(--color-fg);
+  font-family: "Inter", "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  font-size: 13px;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c8d2e2 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #c8d2e2;
+  border-radius: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@utility panel {
+  background: var(--color-ink-900);
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 26px -20px rgba(16, 24, 40, 0.45);
+}
+
+@utility glow {
+  box-shadow: 0 0 0 1px rgba(63, 99, 232, 0.18), 0 18px 40px -22px rgba(63, 99, 232, 0.5);
+}
+
+input,
+select {
+  color-scheme: light;
+}
+
+.no-drag {
+  -webkit-user-select: text;
+  user-select: text;
+}

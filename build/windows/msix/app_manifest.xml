@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:uap3="http://schemas.microsoft.com/appx/manifest/uap/windows10/3"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  xmlns:desktop="http://schemas.microsoft.com/appx/manifest/desktop/windows10"
+  IgnorableNamespaces="uap3">
+  
+  <Identity 
+    Name="com.csf.vcpp-emulator"
+    Publisher="CN=CSF"
+    Version="1.0.0.0" 
+    ProcessorArchitecture="x64" />
+  
+  <Properties>
+    <DisplayName>充电桩模拟器</DisplayName>
+    <PublisherDisplayName>CSF</PublisherDisplayName>
+    <Description>云快充协议充电桩设备模拟器</Description>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+  
+  <Dependencies>
+    <!-- 目标 Windows 11 x64：最低构建 22000（Win11 21H2），已测试 26100（24H2） -->
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.22000.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+  
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+  
+  <Applications>
+    <Application Id="com.csf.vcpp-emulator" Executable="vcpp-emulator.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="充电桩模拟器"
+        Description="云快充协议充电桩设备模拟器"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png">
+        <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
+        <uap:SplashScreen Image="Assets\SplashScreen.png" />
+      </uap:VisualElements>
+      
+      <Extensions>
+        <desktop:Extension Category="windows.fullTrustProcess" Executable="vcpp-emulator.exe" />
+        
+        
+      </Extensions>
+    </Application>
+  </Applications>
+  
+  <Capabilities>
+    <rescap:Capability Name="runFullTrust" />
+    
+  </Capabilities>
+</Package>

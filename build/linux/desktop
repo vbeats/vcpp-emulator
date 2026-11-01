@@ -1,0 +1,13 @@
+[Desktop Entry]
+Version=1.0
+Name=充电桩模拟器
+Comment=云快充协议充电桩设备模拟器
+# The Exec line includes %u to pass the URL to the application
+Exec=/usr/local/bin/vcpp-emulator %u
+Terminal=false
+Type=Application
+Icon=vcpp-emulator
+Categories=Utility;
+StartupWMClass=vcpp-emulator
+
+ 
