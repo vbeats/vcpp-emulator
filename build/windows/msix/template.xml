@@ -10,15 +10,15 @@
     <Installer
         Path="vcpp-emulator.exe"
         Arguments=""
-        InstallLocation="C:\Program Files\CSF\充电桩模拟器">
+        InstallLocation="C:\Program Files\CSF\设备模拟器">
     </Installer>
     <PackageInformation
         PackageName="com.csf.vcpp-emulator"
-        PackageDisplayName="充电桩模拟器"
+        PackageDisplayName="设备模拟器"
         PublisherName="CN=CSF"
         PublisherDisplayName="CSF"
         Version="1.0.0.0"
-        PackageDescription="云快充协议充电桩设备模拟器">
+        PackageDescription="云快充协议充电桩 / 加油机设备模拟器">
         <Capabilities>
             <Capability Name="runFullTrust" />
             
@@ -26,8 +26,8 @@
         <Applications>
             <Application
                 Id="com.csf.vcpp-emulator"
-                Description="云快充协议充电桩设备模拟器"
-                DisplayName="充电桩模拟器"
+                Description="云快充协议充电桩 / 加油机设备模拟器"
+                DisplayName="设备模拟器"
                 ExecutableName="vcpp-emulator.exe"
                 EntryPoint="Windows.FullTrustApplication">
                 
@@ -42,9 +42,9 @@
         </Dependencies>
         <Properties>
             <Framework>false</Framework>
-            <DisplayName>充电桩模拟器</DisplayName>
+            <DisplayName>设备模拟器</DisplayName>
             <PublisherDisplayName>CSF</PublisherDisplayName>
-            <Description>云快充协议充电桩设备模拟器</Description>
+            <Description>云快充协议充电桩 / 加油机设备模拟器</Description>
             <Logo>Assets\AppIcon.png</Logo>
         </Properties>
     </PackageInformation>

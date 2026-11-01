@@ -9,8 +9,10 @@ package store
 import (
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -43,6 +45,53 @@ const (
 	defaultGunCount   = 1
 	defaultRatedPower = 120
 	defaultProgramVer = "220422"
+)
+
+// 加油站模块取值区间
+const (
+	minDispenserCount  = 1
+	maxDispenserCount  = 64
+	minNozzleCount     = 1
+	maxNozzleCount     = 8
+	minFuelPrice       = 0.01
+	maxFuelPrice       = 99.99
+	minPushIntervalSec = 1
+	maxPushIntervalSec = 600
+	minHTTPTimeoutSec  = 1
+	maxHTTPTimeoutSec  = 60
+	minMqttPort        = 1
+	maxMqttPort        = 65535
+	minMqttQos         = 0
+	maxMqttQos         = 2
+	minTankVolumeL     = 1
+	maxTankVolumeL     = 500
+
+	defaultDispenserCount  = 1
+	defaultNozzleCount     = 2
+	defaultPushIntervalSec = 5
+	defaultHTTPTimeoutSec  = 10
+	defaultMqttPort        = 1883
+	defaultMqttQos         = 1
+	defaultTankVolumeL     = 60
+	defaultMqttBroker      = "10.88.0.81"
+	defaultMqttUsername    = "admin"
+	defaultMqttPassword    = "admin123456"
+	defaultMqttClientID    = "vcpp-emulator-gas"
+	defaultHTTPBaseURL     = "http://10.88.0.81:18083"
+)
+
+// 数据推送形式
+const (
+	PushModeNone = "none" // 不推送
+	PushModeMqtt = "mqtt" // MQTT 服务器
+	PushModeHTTP = "http" // HTTP POST JSON
+)
+
+// 加油目标模式
+const (
+	FuelTargetFree   = "free"   // 加满为止（手动停止 / 跳枪自动停止）
+	FuelTargetAmount = "amount" // 定额加油：达到指定金额自动停止
+	FuelTargetVolume = "volume" // 定量加油：达到指定升数自动停止
 )
 
 // ServerConfig 服务端连接配置
@@ -85,10 +134,236 @@ type StartChargeForm struct {
 	Target     ChargeTarget `json:"target" yaml:"target"`          // 充电目标
 }
 
+// FuelOption 油品选项：统一油号目录，同时给出界面区分色。
+// 加油站各油枪只能从该目录中选择油号，油价亦按目录逐项统一配置。
+type FuelOption struct {
+	Code     string `json:"code" yaml:"code"`         // 油号：-10# / 0# / 92# / 95# / 98# / 100#
+	Name     string `json:"name" yaml:"name"`        // 展示名
+	Category string `json:"category" yaml:"category"` // 柴油 / 汽油 / 甲醇
+	Color    string `json:"color" yaml:"color"`       // 界面区分色（十六进制）
+}
+
+// fuelCatalog 油号目录，顺序即界面下拉顺序
+var fuelCatalog = []FuelOption{
+	{Code: "-10#", Name: "-10# 柴油", Category: "柴油", Color: "#0f766e"},
+	{Code: "0#", Name: "0# 柴油", Category: "柴油", Color: "#15803d"},
+	{Code: "92#", Name: "92# 汽油", Category: "汽油", Color: "#b45309"},
+	{Code: "95#", Name: "95# 汽油", Category: "汽油", Color: "#c2410c"},
+	{Code: "98#", Name: "98# 汽油", Category: "汽油", Color: "#9f1239"},
+	{Code: "100#", Name: "100# 甲醇", Category: "甲醇", Color: "#4338ca"},
+}
+
+// FuelOptions 油号目录副本
+func FuelOptions() []FuelOption {
+	out := make([]FuelOption, len(fuelCatalog))
+	copy(out, fuelCatalog)
+	return out
+}
+
+// FuelDefaultCode 缺省油号
+const FuelDefaultCode = "92#"
+
+// FuelByCode 按油号查目录项
+func FuelByCode(code string) (FuelOption, bool) {
+	for _, f := range fuelCatalog {
+		if f.Code == code {
+			return f, true
+		}
+	}
+	return FuelOption{}, false
+}
+
+// FuelPrice 油品单价（元 / 升，两位小数）
+type FuelPrice struct {
+	Code  string  `json:"code" yaml:"code"`
+	Price float64 `json:"price" yaml:"price"`
+}
+
+// DefaultFuelPrices 默认油价：与油号目录一一对应
+func DefaultFuelPrices() []FuelPrice {
+	return []FuelPrice{
+		{Code: "-10#", Price: 7.25},
+		{Code: "0#", Price: 6.88},
+		{Code: "92#", Price: 7.68},
+		{Code: "95#", Price: 8.19},
+		{Code: "98#", Price: 8.96},
+		{Code: "100#", Price: 6.50},
+	}
+}
+
+// FuelPriceOf 取指定油号单价，缺失时回退目录默认值
+func FuelPriceOf(prices []FuelPrice, code string) float64 {
+	for _, p := range prices {
+		if p.Code == code {
+			return p.Price
+		}
+	}
+	for _, p := range DefaultFuelPrices() {
+		if p.Code == code {
+			return p.Price
+		}
+	}
+	for _, p := range DefaultFuelPrices() {
+		if p.Code == FuelDefaultCode {
+			return p.Price
+		}
+	}
+	return 0
+}
+
+// MqttConfig MQTT 推送配置。
+// 18083 为 EMQX 控制台端口，实际 MQTT 连接使用 1883，二者分别配置互不冲突。
+type MqttConfig struct {
+	Broker        string `json:"broker" yaml:"broker"`                 // 服务器地址
+	Port          int    `json:"port" yaml:"port"`                     // MQTT 端口
+	ClientID      string `json:"clientId" yaml:"client-id"`            // 客户端标识
+	Username      string `json:"username" yaml:"username"`             // 用户名
+	Password      string `json:"password" yaml:"password"`             // 口令
+	TopicProgress string `json:"topicProgress" yaml:"topic-progress"`  // 加油进度推送 topic
+	TopicOrder    string `json:"topicOrder" yaml:"topic-order"`        // 加油订单推送 topic
+	Qos           int    `json:"qos" yaml:"qos"`                      // 0 / 1 / 2
+}
+
+// HTTPPushConfig HTTP POST JSON 推送配置
+type HTTPPushConfig struct {
+	BaseURL      string `json:"baseUrl" yaml:"base-url"`           // 接口基址
+	PathProgress string `json:"pathProgress" yaml:"path-progress"` // 加油进度推送路径
+	PathOrder    string `json:"pathOrder" yaml:"path-order"`       // 加油订单推送路径
+	Token        string `json:"token" yaml:"token"`                // 可选鉴权令牌
+	TimeoutSec   int    `json:"timeoutSec" yaml:"timeout-sec"`     // 超时（秒）
+}
+
+// NozzleConfig 单把油枪配置，枪号为字符串，按 1 ~ x 顺序排列
+type NozzleConfig struct {
+	No       string `json:"no" yaml:"no"`             // 枪号：1 / 2 / ...
+	FuelCode string `json:"fuelCode" yaml:"fuel-code"` // 油号，取自油号目录
+}
+
+// DispenserConfig 单台加油机配置。
+// 油机没有启用 / 停用状态：配置中存在即投入模拟运行。
+type DispenserConfig struct {
+	ID          string         `json:"id" yaml:"id"`                     // 内部唯一标识
+	DispenserNo string         `json:"dispenserNo" yaml:"dispenser-no"` // 油机号
+	NozzleCount int            `json:"nozzleCount" yaml:"nozzle-count"` // 枪数量
+	Nozzles     []NozzleConfig `json:"nozzles" yaml:"nozzles"`           // 各枪油号配置
+}
+
+// FuelTarget 加油目标：定额（金额）/ 定量（升数）/ 加满
+type FuelTarget struct {
+	Mode   string  `json:"mode" yaml:"mode"`     // free / amount / volume
+	Amount float64 `json:"amount" yaml:"amount"` // 定额金额（元）
+	Volume float64 `json:"volume" yaml:"volume"` // 定量升数（L）
+}
+
+// StartFuelForm 最近一次「开始加油」表单填写内容
+type StartFuelForm struct {
+	Target  FuelTarget `json:"target" yaml:"target"`
+	CardNo  string     `json:"cardNo" yaml:"card-no"`
+	PlateNo string     `json:"plateNo" yaml:"plate-no"`
+}
+
+// DefaultStartFuel 开始加油表单默认值
+func DefaultStartFuel() StartFuelForm {
+	return StartFuelForm{
+		Target:  FuelTarget{Mode: FuelTargetAmount, Amount: 200, Volume: 30},
+		CardNo:  "88888888",
+		PlateNo: "京A12345",
+	}
+}
+
+// GasConfig 加油站模块公共配置：数据推送形式、统一油价与油机列表。
+// 该配置属于整个油站，不随单台油机下放，所有油机共用同一套推送通道与油价。
+type GasConfig struct {
+	PushMode        string            `json:"pushMode" yaml:"push-mode"`               // none / mqtt / http
+	Mqtt            MqttConfig        `json:"mqtt" yaml:"mqtt"`                        // MQTT 推送配置
+	HTTP            HTTPPushConfig    `json:"http" yaml:"http"`                        // HTTP 推送配置
+	Prices          []FuelPrice       `json:"prices" yaml:"prices"`                    // 统一油价（按油号）
+	Dispensers      []DispenserConfig `json:"dispensers" yaml:"dispensers"`             // 油机列表
+	PushIntervalSec int               `json:"pushIntervalSec" yaml:"push-interval-sec"` // 加油过程推送周期（秒）
+	TankVolumeL     float64           `json:"tankVolumeL" yaml:"tank-volume-l"`         // 油箱容积 L，加满自动跳枪
+	LastStartFuel   StartFuelForm     `json:"lastStartFuel" yaml:"last-start-fuel"`     // 最近一次开始加油表单填写内容
+}
+
+// DefaultGas 加油站默认配置：1 台油机 2 把油枪
+func DefaultGas() GasConfig {
+	mqtt := DefaultMqtt()
+	http := DefaultHTTPPush()
+	return GasConfig{
+		PushMode:        PushModeMqtt,
+		Mqtt:            mqtt,
+		HTTP:            http,
+		Prices:          DefaultFuelPrices(),
+		Dispensers:      GenerateDispensers(defaultDispenserCount, defaultNozzleCount),
+		PushIntervalSec: defaultPushIntervalSec,
+		TankVolumeL:     defaultTankVolumeL,
+		LastStartFuel:   DefaultStartFuel(),
+	}
+}
+
+// DefaultMqtt MQTT 推送默认配置
+func DefaultMqtt() MqttConfig {
+	return MqttConfig{
+		Broker:        defaultMqttBroker,
+		Port:          defaultMqttPort,
+		ClientID:      defaultMqttClientID,
+		Username:      defaultMqttUsername,
+		Password:      defaultMqttPassword,
+		TopicProgress: "vcpp/gas/{dispenser}/nozzle/{nozzle}/progress",
+		TopicOrder:    "vcpp/gas/{dispenser}/nozzle/{nozzle}/order",
+		Qos:           defaultMqttQos,
+	}
+}
+
+// DefaultHTTPPush HTTP 推送默认配置
+func DefaultHTTPPush() HTTPPushConfig {
+	return HTTPPushConfig{
+		BaseURL:      defaultHTTPBaseURL,
+		PathProgress: "/api/gas/fuel/progress",
+		PathOrder:    "/api/gas/fuel/order",
+		Token:        "",
+		TimeoutSec:   defaultHTTPTimeoutSec,
+	}
+}
+
+// GenerateDispensers 按「油机台数 × 每台枪数」生成油机配置。
+// 油机号按 01 / 02 ... 排列，每台油机的枪号固定从 1 开始递增；
+// 油号按油号目录轮转分配，用户可在界面逐枪调整。
+func GenerateDispensers(count, nozzleCount int) []DispenserConfig {
+	if count < minDispenserCount {
+		count = minDispenserCount
+	}
+	if count > maxDispenserCount {
+		count = maxDispenserCount
+	}
+	if nozzleCount < minNozzleCount {
+		nozzleCount = minNozzleCount
+	}
+	if nozzleCount > maxNozzleCount {
+		nozzleCount = maxNozzleCount
+	}
+	cat := fuelCatalog
+	out := make([]DispenserConfig, 0, count)
+	for i := 0; i < count; i++ {
+		nozzles := make([]NozzleConfig, 0, nozzleCount)
+		for j := 0; j < nozzleCount; j++ {
+			code := cat[(i*nozzleCount+j)%len(cat)].Code
+			nozzles = append(nozzles, NozzleConfig{No: strconv.Itoa(j + 1), FuelCode: code})
+		}
+		out = append(out, DispenserConfig{
+			ID:          fmt.Sprintf("dispenser-%d", i+1),
+			DispenserNo: fmt.Sprintf("%02d", i+1),
+			NozzleCount: nozzleCount,
+			Nozzles:     nozzles,
+		})
+	}
+	return out
+}
+
 // AppConfig 应用配置，对应单个 YAML 配置文件
 type AppConfig struct {
 	Server            ServerConfig    `json:"server" yaml:"server"`
 	Piles             []PileConfig    `json:"piles" yaml:"piles"`
+	Gas               GasConfig       `json:"gas" yaml:"gas"`
 	HeartbeatSec      int             `json:"heartbeatSec" yaml:"heartbeat-sec"`             // 心跳周期（秒）
 	RealTimeIdleSec   int             `json:"realTimeIdleSec" yaml:"real-time-idle-sec"`     // 空闲实时数据周期（秒）
 	RealTimeChargeSec int             `json:"realTimeChargeSec" yaml:"real-time-charge-sec"` // 充电中实时数据周期（秒）
@@ -148,6 +423,7 @@ func Default() AppConfig {
 		ReconnectSec:      30,
 		DefaultTarget:     DefaultStartCharge().Target,
 		LastStartCharge:   DefaultStartCharge(),
+		Gas:               DefaultGas(),
 	}
 }
 
@@ -161,6 +437,22 @@ const configTemplate = `# vcpp-emulator 运行配置
 # - auto-connect 默认 false：应用启动后保持未连接，需在界面手动连接；手动连接的桩在通信中断后
 #   按 auto-reconnect（默认开启）以 reconnect-sec 为周期自动重连。
 # - piles 为桩列表（pile-no 为 14 位桩号）；last-start-charge 记录最近一次「启动充电」界面的填写内容。
+#
+# ---------------- 加油站模块（gas，全站公共配置） ----------------
+# - gas 为全站公共配置：所有油机共用同一套数据推送通道、油价与油箱容积，不按油机分别下放。
+# - gas.push-mode 数据推送形式：none 不推送 / mqtt 推送到 MQTT 服务器 / http 以 JSON 形式 POST 到接口。
+# - gas.mqtt：broker + port（MQTT 端口，默认 1883；18083 为 EMQX 控制台端口）、client-id、
+#   username / password、topic-progress 进度推送主题、topic-order 订单推送主题、qos[0,2]。
+#   topic 支持 {dispenser} 与 {nozzle} 占位符，运行时替换为油机号与枪号。
+# - gas.http：base-url 接口基址、path-progress 进度推送路径、path-order 订单推送路径、
+#   token 可选鉴权令牌、timeout-sec 超时[1,60]。
+# - gas.prices 统一油价：按油号配置单价（元/升，两位小数），油号取自
+#   -10# / 0# / 92# / 95# / 98# / 100#。
+# - gas.dispensers 油机列表：dispenser-no 油机号、nozzle-count 枪数、nozzles 逐枪油号。
+#   油机 / 油枪也可在界面「批量生成」一键生成（台数 1~64、每台枪数 1~8，生成结果落在此列表）。
+# - gas.push-interval-sec[1,600] 加油过程推送周期；gas.tank-volume-l[1,500] 油箱容积，加满自动跳枪。
+# - 油机没有启用 / 停用状态：gas.dispensers 中出现的油机随配置载入即投入运行。
+# - gas.last-start-fuel 记录最近一次「开始加油」界面的填写内容。
 #
 `
 
@@ -373,7 +665,188 @@ func normalize(cfg *AppConfig) []string {
 		normalizeStartCharge(&cfg.LastStartCharge)
 	}
 
+	notes = append(notes, normalizeGas(&cfg.Gas)...)
+
 	return notes
+}
+
+// normalizeGas 加油站模块取值兜底：推送通道、统一油价与油机列表。
+// 与充电桩一致的口径——单项异常只修补该项，不因局部问题丢弃整份油站配置。
+func normalizeGas(g *GasConfig) []string {
+	def := DefaultGas()
+	var notes []string
+	add := func(format string, a ...any) {
+		notes = append(notes, fmt.Sprintf(format, a...))
+	}
+
+	g.PushMode = strings.TrimSpace(g.PushMode)
+	switch g.PushMode {
+	case PushModeNone, PushModeMqtt, PushModeHTTP:
+	default:
+		if g.PushMode != "" {
+			add("gas.push-mode=%s 非法，已回退 %s", g.PushMode, def.PushMode)
+		}
+		g.PushMode = def.PushMode
+	}
+
+	g.Mqtt.Broker = strings.TrimSpace(g.Mqtt.Broker)
+	if g.Mqtt.Broker == "" {
+		g.Mqtt.Broker = def.Mqtt.Broker
+	}
+	if g.Mqtt.Port < minMqttPort || g.Mqtt.Port > maxMqttPort {
+		if g.Mqtt.Port != 0 {
+			add("gas.mqtt.port=%d 超出 [%d,%d]，已回退 %d", g.Mqtt.Port, minMqttPort, maxMqttPort, def.Mqtt.Port)
+		}
+		g.Mqtt.Port = def.Mqtt.Port
+	}
+	g.Mqtt.ClientID = strings.TrimSpace(g.Mqtt.ClientID)
+	if g.Mqtt.ClientID == "" {
+		g.Mqtt.ClientID = def.Mqtt.ClientID
+	}
+	// 用户名与口令允许为空（匿名接入），仅做去空格处理
+	g.Mqtt.Username = strings.TrimSpace(g.Mqtt.Username)
+	g.Mqtt.Password = strings.TrimSpace(g.Mqtt.Password)
+	g.Mqtt.TopicProgress = strings.TrimSpace(g.Mqtt.TopicProgress)
+	if g.Mqtt.TopicProgress == "" {
+		g.Mqtt.TopicProgress = def.Mqtt.TopicProgress
+	}
+	g.Mqtt.TopicOrder = strings.TrimSpace(g.Mqtt.TopicOrder)
+	if g.Mqtt.TopicOrder == "" {
+		g.Mqtt.TopicOrder = def.Mqtt.TopicOrder
+	}
+	if g.Mqtt.Qos < minMqttQos || g.Mqtt.Qos > maxMqttQos {
+		add("gas.mqtt.qos=%d 超出 [%d,%d]，已回退 %d", g.Mqtt.Qos, minMqttQos, maxMqttQos, def.Mqtt.Qos)
+		g.Mqtt.Qos = def.Mqtt.Qos
+	}
+
+	g.HTTP.BaseURL = strings.TrimRight(strings.TrimSpace(g.HTTP.BaseURL), "/")
+	g.HTTP.PathProgress = strings.TrimSpace(g.HTTP.PathProgress)
+	if g.HTTP.PathProgress == "" {
+		g.HTTP.PathProgress = def.HTTP.PathProgress
+	}
+	g.HTTP.PathOrder = strings.TrimSpace(g.HTTP.PathOrder)
+	if g.HTTP.PathOrder == "" {
+		g.HTTP.PathOrder = def.HTTP.PathOrder
+	}
+	g.HTTP.Token = strings.TrimSpace(g.HTTP.Token)
+	reset(add, "gas.http.timeout-sec", &g.HTTP.TimeoutSec, minHTTPTimeoutSec, maxHTTPTimeoutSec, def.HTTP.TimeoutSec)
+
+	if g.TankVolumeL < minTankVolumeL || g.TankVolumeL > maxTankVolumeL {
+		if g.TankVolumeL != 0 {
+			add("gas.tank-volume-l=%.2f 超出 [%.0f,%.0f]，已回退 %.0f", g.TankVolumeL,
+				float64(minTankVolumeL), float64(maxTankVolumeL), def.TankVolumeL)
+		}
+		g.TankVolumeL = def.TankVolumeL
+	}
+
+	// 油价：按油号目录补齐缺失项，剔除未知油号，并把单价规范到两位小数
+	known := make(map[string]float64, len(def.Prices))
+	for _, p := range def.Prices {
+		known[p.Code] = p.Price
+	}
+	prices := make([]FuelPrice, 0, len(def.Prices))
+	seen := make(map[string]bool, len(def.Prices))
+	for _, p := range g.Prices {
+		p.Code = strings.TrimSpace(p.Code)
+		if _, ok := known[p.Code]; !ok {
+			add("gas.prices 中油号 %s 不在目录中，已忽略", p.Code)
+			continue
+		}
+		if seen[p.Code] {
+			continue
+		}
+		if p.Price < minFuelPrice || p.Price > maxFuelPrice {
+			add("gas.prices[%s]=%.2f 超出 [%.2f,%.2f]，已回退 %.2f", p.Code, p.Price,
+				minFuelPrice, maxFuelPrice, known[p.Code])
+			p.Price = known[p.Code]
+		}
+		p.Price = round2(p.Price)
+		seen[p.Code] = true
+		prices = append(prices, p)
+	}
+	for _, p := range def.Prices {
+		if !seen[p.Code] {
+			prices = append(prices, p)
+			seen[p.Code] = true
+		}
+	}
+	g.Prices = prices
+
+	reset(add, "gas.push-interval-sec", &g.PushIntervalSec, minPushIntervalSec, maxPushIntervalSec, def.PushIntervalSec)
+
+	units := make([]DispenserConfig, 0, len(g.Dispensers))
+	for i, d := range g.Dispensers {
+		d.DispenserNo = strings.TrimSpace(d.DispenserNo)
+		if d.DispenserNo == "" {
+			add("gas.dispensers[%d] 缺少油机号，已忽略该油机", i)
+			continue
+		}
+		if d.ID == "" {
+			d.ID = fmt.Sprintf("dispenser-%d", i+1)
+		}
+		if d.NozzleCount < minNozzleCount || d.NozzleCount > maxNozzleCount {
+			add("gas.dispensers[%d] 枪数 %d 超出 [%d,%d]，已回退 %d", i, d.NozzleCount,
+				minNozzleCount, maxNozzleCount, defaultNozzleCount)
+			d.NozzleCount = defaultNozzleCount
+		}
+		d.Nozzles = normalizeNozzles(d.NozzleCount, d.Nozzles, add)
+		units = append(units, d)
+	}
+	// 旧配置完全没有油机时按默认台数 / 枪数生成，保证界面可直接操作
+	if len(units) == 0 {
+		units = GenerateDispensers(defaultDispenserCount, defaultNozzleCount)
+		add("gas.dispensers 为空，已按 %d 台 × %d 枪自动生成", defaultDispenserCount, defaultNozzleCount)
+	}
+	g.Dispensers = units
+
+	if g.LastStartFuel == (StartFuelForm{}) {
+		g.LastStartFuel = DefaultStartFuel()
+	} else {
+		normalizeStartFuel(&g.LastStartFuel)
+	}
+
+	return notes
+}
+
+// NormalizeNozzles 保证每台油机的枪号连续（1 ~ x）且油号合法，供上层写入前规整
+func NormalizeNozzles(count int, list []NozzleConfig) []NozzleConfig {
+	return normalizeNozzles(count, list, func(string, ...any) {})
+}
+
+// normalizeNozzles 保证每台油机的枪号连续（1 ~ x）且油号合法
+func normalizeNozzles(count int, list []NozzleConfig, add func(string, ...any)) []NozzleConfig {
+	out := make([]NozzleConfig, 0, count)
+	for i := 0; i < count; i++ {
+		n := NozzleConfig{No: strconv.Itoa(i + 1), FuelCode: FuelDefaultCode}
+		if i < len(list) {
+			code := strings.TrimSpace(list[i].FuelCode)
+			if code != "" {
+				if _, ok := FuelByCode(code); ok {
+					n.FuelCode = code
+				} else {
+					add("油号 %s 不在目录中，已回退 %s", code, FuelDefaultCode)
+				}
+			}
+		}
+		out = append(out, n)
+	}
+	return out
+}
+
+// normalizeStartFuel 修补加油表单取值，字符串（卡号 / 车牌）允许为空
+func normalizeStartFuel(f *StartFuelForm) {
+	def := DefaultStartFuel()
+	switch f.Target.Mode {
+	case FuelTargetFree, FuelTargetAmount, FuelTargetVolume:
+	default:
+		f.Target.Mode = def.Target.Mode
+	}
+	if f.Target.Amount < 0 {
+		f.Target.Amount = def.Target.Amount
+	}
+	if f.Target.Volume < 0 {
+		f.Target.Volume = def.Target.Volume
+	}
 }
 
 // reset 取值越界时回退默认值，并记录修正说明
@@ -382,6 +855,11 @@ func reset(add func(string, ...any), key string, v *int, min, max, def int) {
 		add("%s=%d 超出合理区间 [%d,%d]，已回退 %d", key, *v, min, max, def)
 		*v = def
 	}
+}
+
+// round2 保留两位小数（油价 / 金额）
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
 }
 
 // normalizeStartCharge 修补旧配置缺失或异常的表单取值，保证其始终可安全参与充电计算。

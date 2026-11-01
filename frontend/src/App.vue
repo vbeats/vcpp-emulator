@@ -12,23 +12,48 @@ import GasStationView from './components/GasStationView.vue'
 import LogPanel from './components/LogPanel.vue'
 import PileDialog from './components/PileDialog.vue'
 import StartChargeDialog from './components/StartChargeDialog.vue'
+import DispenserDialog from './components/DispenserDialog.vue'
+import StartFuelDialog from './components/StartFuelDialog.vue'
+import GasConfigDialog from './components/GasConfigDialog.vue'
 import { type ModuleKey } from './modules'
-import { api, normalizePiles } from './api'
-import type { AppConfig, Entry, PileConfig, PileView, StartChargeForm, VersionOption } from './types'
+import { api, normalizeDispensers, normalizePiles } from './api'
+import type {
+  AppConfig,
+  DispenserConfig,
+  DispenserView,
+  Entry,
+  FuelOption,
+  FuelOrder,
+  PileConfig,
+  PileView,
+  PushMessage,
+  StartChargeForm,
+  StartFuelRequest,
+  VersionOption,
+} from './types'
 
 // 当前模块：充电桩 / 加油站，两套界面独立并行
 const module = ref<ModuleKey>('charge')
 
 const config = ref<AppConfig | null>(null)
 const piles = ref<PileView[]>([])
+const dispensers = ref<DispenserView[]>([])
+const fuels = ref<FuelOption[]>([])
+const orders = ref<FuelOrder[]>([])
+const pushes = ref<PushMessage[]>([])
+const pushTarget = ref('')
 const logs = ref<Entry[]>([])
 const versions = ref<VersionOption[]>([])
 const logDir = ref('')
 const selectedId = ref('')
+const gasSelectedId = ref('')
 
 // 弹窗状态
 const pileForm = ref<{ open: boolean; editing: PileConfig | null }>({ open: false, editing: null })
 const chargeForm = ref<{ open: boolean; gunNo: number }>({ open: false, gunNo: 1 })
+const dispenserForm = ref<{ open: boolean; editing: DispenserConfig | null }>({ open: false, editing: null })
+const fuelForm = ref<{ open: boolean; nozzleNo: string }>({ open: false, nozzleNo: '1' })
+const gasConfigForm = ref<{ open: boolean }>({ open: false })
 
 const toasts = ref<{ id: number; text: string; ok: boolean }[]>([])
 
@@ -42,6 +67,16 @@ const toast = (text: string, ok = true) => {
 
 const selected = computed(() => piles.value.find((p) => p.id === selectedId.value) ?? null)
 const onlineCount = computed(() => piles.value.filter((p) => p.status === 'online').length)
+const selectedDispenser = computed(
+  () => dispensers.value.find((d) => d.id === gasSelectedId.value) ?? null,
+)
+// fuellingNozzles 正在加油的枪数（油机无启用 / 停用状态，按枪统计即可）
+const fuellingNozzles = computed(() =>
+  dispensers.value.reduce(
+    (sum, d) => sum + (d.nozzles ?? []).filter((n) => n.status === 'fueling').length,
+    0,
+  ),
+)
 
 // 建议桩号：在现有桩号基础上递增
 const suggestPileNo = () => {
@@ -50,18 +85,44 @@ const suggestPileNo = () => {
   return String(max + 1)
 }
 
+// 建议油机号：在现有机号基础上递增（保持两位宽度）
+const suggestDispenserNo = () => {
+  const nums = dispensers.value.map((d) => Number(d.dispenserNo)).filter((n) => Number.isFinite(n))
+  const max = nums.length ? Math.max(...nums) : 0
+  return String(max + 1).padStart(2, '0')
+}
+
 let offLog: (() => void) | undefined
 let offState: (() => void) | undefined
+let offGasState: (() => void) | undefined
+let offGasPush: (() => void) | undefined
 
 const load = async () => {
   try {
-    const [cfg, ps, vs, ls, dir] = await Promise.all([api.config(), api.piles(), api.versions(), api.logs(), api.logDir()])
+    const [cfg, ps, ds, fs, os, ms, pt, vs, ls, dir] = await Promise.all([
+      api.config(),
+      api.piles(),
+      api.dispensers(),
+      api.fuelOptions(),
+      api.fuelOrders(),
+      api.pushMessages(),
+      api.pushTarget(),
+      api.versions(),
+      api.logs(),
+      api.logDir(),
+    ])
     config.value = cfg
     piles.value = ps
+    dispensers.value = ds
+    fuels.value = fs
+    orders.value = os
+    pushes.value = ms
+    pushTarget.value = pt
     versions.value = vs
     logs.value = ls
     logDir.value = dir
     if (!selectedId.value && ps.length) selectedId.value = ps[0]?.id ?? ''
+    if (!gasSelectedId.value && ds.length) gasSelectedId.value = ds[0]?.id ?? ''
   } catch (e) {
     toast(e instanceof Error ? e.message : String(e), false)
   }
@@ -70,6 +131,17 @@ const load = async () => {
 const refreshPiles = async () => {
   try {
     piles.value = await api.piles()
+  } catch {
+    /* 状态推送会持续刷新，忽略单次失败 */
+  }
+}
+
+const refreshGas = async () => {
+  try {
+    const [ds, os, pt] = await Promise.all([api.dispensers(), api.fuelOrders(), api.pushTarget()])
+    dispensers.value = ds
+    orders.value = os
+    pushTarget.value = pt
   } catch {
     /* 状态推送会持续刷新，忽略单次失败 */
   }
@@ -210,15 +282,147 @@ const submitCharge = async (req: {
   }
 }
 
+// ---------------- 加油站 ----------------
+
+const editDispenser = (d: DispenserView) => {
+  const saved = config.value?.gas?.dispensers?.find((it) => it.id === d.id)
+  dispenserForm.value = {
+    open: true,
+    editing: saved
+      ? { ...saved, nozzles: (saved.nozzles ?? []).map((n) => ({ ...n })) }
+      : {
+          id: d.id,
+          dispenserNo: d.dispenserNo,
+          nozzleCount: d.nozzleCount,
+          nozzles: (d.nozzles ?? []).map((n) => ({ no: n.no, fuelCode: n.fuelCode })),
+        },
+  }
+}
+
+const submitDispenser = async (cfg: DispenserConfig) => {
+  try {
+    if (cfg.id) await api.updateDispenser(cfg)
+    else await api.addDispenser(cfg)
+    dispenserForm.value = { open: false, editing: null }
+    toast('加油机已保存')
+    await load()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const removeDispenser = async (id: string) => {
+  try {
+    await api.removeDispenser(id)
+    if (gasSelectedId.value === id) gasSelectedId.value = ''
+    toast('加油机已删除')
+    await load()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const submitGasConfig = async (gas: AppConfig['gas']) => {
+  if (!config.value) return
+  try {
+    await api.saveConfig({ ...config.value, gas })
+    toast('油站配置已保存')
+    await load()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const generateDispensers = async (count: number, nozzleCount: number) => {
+  try {
+    await api.generateDispensers(count, nozzleCount)
+    gasSelectedId.value = ''
+    toast(`已生成 ${count} 台油机 × ${nozzleCount} 枪`)
+    await load()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const submitFuel = async (req: StartFuelRequest) => {
+  const d = selectedDispenser.value
+  if (!d) return
+  try {
+    await api.startFuel({ ...req, dispenserId: d.id })
+    // 后端已落盘，这里同步本地配置，保证再次打开表单读到的是最近一次填写
+    if (config.value) {
+      config.value = { ...config.value, gas: { ...config.value.gas, lastStartFuel: lastStartFuel(req) } }
+    }
+    fuelForm.value = { open: false, nozzleNo: '1' }
+    toast('加油已开始')
+    await refreshGas()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const lastStartFuel = (req: StartFuelRequest) => ({
+  target: {
+    mode: req.target?.mode ?? 'free',
+    amount: req.target?.amount ?? 0,
+    volume: req.target?.volume ?? 0,
+  },
+  cardNo: req.cardNo ?? '',
+  plateNo: req.plateNo ?? '',
+})
+
+const stopFuel = async (nozzleNo: string) => {
+  const d = selectedDispenser.value
+  if (!d) return
+  try {
+    await api.stopFuel(d.id, nozzleNo)
+    await refreshGas()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const liftNozzle = async (nozzleNo: string, lifted: boolean) => {
+  const d = selectedDispenser.value
+  if (!d) return
+  try {
+    await api.setNozzle(d.id, nozzleNo, lifted)
+    await refreshGas()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
+const changeFuel = async (nozzleNo: string, code: string) => {
+  const d = selectedDispenser.value
+  if (!d) return
+  try {
+    await api.updateNozzleFuel(d.id, nozzleNo, code)
+    await refreshGas()
+  } catch (e) {
+    toast(e instanceof Error ? e.message : String(e), false)
+  }
+}
+
 onMounted(async () => {
   // 日志事件：仅保留最近 100 条
   offLog = Events.On(WailsEvents.Log, (ev) => {
     const entry = ev.data as Entry
     if (entry) logs.value = [...logs.value, entry].slice(-100)
   })
-  // 状态事件：桩快照整体刷新
+  // 状态事件：充电桩快照整体刷新
   offState = Events.On(WailsEvents.State, (ev) => {
     piles.value = normalizePiles(ev.data as PileView[] | null)
+  })
+  // 状态事件：加油机快照整体刷新
+  offGasState = Events.On(WailsEvents.GasState, (ev) => {
+    dispensers.value = normalizeDispensers(ev.data as DispenserView[] | null)
+  })
+  // 推送事件：加油数据待推送记录
+  offGasPush = Events.On(WailsEvents.GasPush, (ev) => {
+    const msg = ev.data as PushMessage
+    if (msg) pushes.value = [...pushes.value, msg].slice(-50)
+    void refreshGas()
   })
   await load()
 })
@@ -226,6 +430,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   offLog?.()
   offState?.()
+  offGasState?.()
+  offGasPush?.()
 })
 </script>
 
@@ -234,12 +440,14 @@ onBeforeUnmount(() => {
     <TopBar
       :config="config"
       :versions="versions"
-      :online="onlineCount"
-      :total="piles.length"
+      :online="module === 'charge' ? onlineCount : fuellingNozzles"
+      :total="module === 'charge' ? piles.length : dispensers.length"
       :module="module"
+      :push-target="pushTarget"
       @save="saveServer"
       @start-all="startAll"
       @stop-all="stopAll"
+      @open-gas-config="gasConfigForm = { open: true }"
     />
 
     <div class="flex-1 min-h-0 flex gap-3">
@@ -269,10 +477,30 @@ onBeforeUnmount(() => {
       </template>
 
       <template v-else>
-        <GasSidebar />
+        <GasSidebar
+          :dispensers="dispensers"
+          :selected-id="gasSelectedId"
+          @select="gasSelectedId = $event"
+          @add="dispenserForm = { open: true, editing: null }"
+          @edit="editDispenser"
+          @remove="removeDispenser"
+          @config="gasConfigForm = { open: true }"
+          @generate="generateDispensers"
+        />
 
         <div class="flex-1 min-w-0">
-          <GasStationView />
+          <GasStationView
+            :dispenser="selectedDispenser"
+            :fuels="fuels"
+            :orders="orders"
+            :pushes="pushes"
+            :push-target="pushTarget"
+            @edit="editDispenser"
+            @start="fuelForm = { open: true, nozzleNo: $event }"
+            @stop="stopFuel"
+            @lift="liftNozzle"
+            @fuel="changeFuel"
+          />
         </div>
       </template>
 
@@ -296,6 +524,31 @@ onBeforeUnmount(() => {
       :last="config?.lastStartCharge ?? null"
       @submit="submitCharge"
       @close="chargeForm = { open: false, gunNo: 1 }"
+    />
+
+    <DispenserDialog
+      :open="dispenserForm.open"
+      :editing="dispenserForm.editing"
+      :suggest="suggestDispenserNo()"
+      @submit="submitDispenser"
+      @close="dispenserForm = { open: false, editing: null }"
+    />
+
+    <StartFuelDialog
+      :open="fuelForm.open"
+      :dispenser-no="selectedDispenser?.dispenserNo ?? ''"
+      :nozzle-no="fuelForm.nozzleNo"
+      :last="config?.gas?.lastStartFuel ?? null"
+      @submit="submitFuel"
+      @close="fuelForm = { open: false, nozzleNo: '1' }"
+    />
+
+    <GasConfigDialog
+      :open="gasConfigForm.open"
+      :gas="config?.gas ?? null"
+      :fuels="fuels"
+      @submit="submitGasConfig"
+      @close="gasConfigForm = { open: false }"
     />
 
     <!-- 轻提示 -->

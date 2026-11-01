@@ -15,3 +15,7 @@ build/android/gen/
 # 运行期日志与构建临时产物
 logs/
 *.log
+
+# archify 作图工作目录
+.archify/
+doc/.archify-remove-*/

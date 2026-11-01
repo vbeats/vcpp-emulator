@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"vcpp-emulator/internal/emu"
+	"vcpp-emulator/internal/gas"
 	"vcpp-emulator/internal/logger"
 	"vcpp-emulator/internal/store"
 	"vcpp-emulator/internal/ykc"
@@ -16,17 +18,26 @@ import (
 
 // 前端事件名，需与 main.go 中 RegisterEvent 注册的名称一致
 const (
-	EventState = "state" // 桩状态快照
-	EventLog   = "log"   // 单条日志
+	EventState    = "state"    // 充电桩状态快照
+	EventLog      = "log"      // 单条日志
+	EventGasState = "gasState" // 加油站状态快照
+	EventGasPush  = "gasPush"  // 单条加油数据推送记录
 )
+
+// pushHistorySize 界面保留的最近推送条数
+const pushHistorySize = 50
 
 // App 应用服务层，向前端暴露配置与模拟器控制能力
 type App struct {
 	wailsApp *application.App
 	logBus   *logger.Bus
 	store    *store.Store
-	mgr      *emu.Manager
+	mgr      *emu.Manager // 充电桩模拟器
+	gasMgr   *gas.Manager // 加油机模拟器
 	logDir   string
+
+	pushMu   sync.Mutex
+	pushLog  []gas.PushMessage // 最近的推送记录，最新在后
 }
 
 // setApp 注入应用实例用于事件推送，小写方法不参与前端绑定
@@ -71,9 +82,14 @@ func (a *App) ServiceStartup(ctx context.Context, options application.ServiceOpt
 		}
 	})
 
-	a.logBus.Infof("充电桩模拟器启动，日志目录: %s", a.logDir)
+	// 加油机为本地模拟，不依赖 TCP 服务端，随应用启动按配置启用
+	a.gasMgr = gas.NewManager(a.logBus, st, a.emitGasState, a.emitGasPush)
+
+	a.logBus.Infof("设备模拟器启动，日志目录: %s", a.logDir)
 	cfg := st.Get()
 	a.mgr.Apply(cfg)
+	a.gasMgr.Apply(cfg)
+	a.logBus.Infof("加油站模块就绪：%d 台油机 · 数据推送 %s", len(cfg.Gas.Dispensers), a.gasMgr.PushTarget())
 	// 默认不自动连接：启动后保持未连接，由用户在界面手动连接，避免配好服务端就直连现场平台
 	if !cfg.AutoConnect {
 		a.logBus.Infof("未开启自动连接，启动后保持未连接状态，请在界面手动连接服务端")
@@ -87,11 +103,36 @@ func (a *App) ServiceShutdown() error {
 	if a.mgr != nil {
 		a.mgr.Shutdown()
 	}
+	if a.gasMgr != nil {
+		a.gasMgr.Shutdown()
+	}
 	if a.logBus != nil {
-		a.logBus.Infof("TCP 连接已全部销毁，充电桩模拟器退出")
+		a.logBus.Infof("TCP 连接已全部销毁，设备模拟器退出")
 		a.logBus.Close()
 	}
 	return nil
+}
+
+// emitGasState 推送加油站状态快照
+func (a *App) emitGasState() {
+	if a.wailsApp == nil || a.gasMgr == nil {
+		return
+	}
+	a.wailsApp.Event.Emit(EventGasState, a.gasMgr.Snapshot())
+}
+
+// emitGasPush 推送单条加油数据并记录最近推送历史
+func (a *App) emitGasPush(msg gas.PushMessage) {
+	a.pushMu.Lock()
+	a.pushLog = append(a.pushLog, msg)
+	if len(a.pushLog) > pushHistorySize {
+		a.pushLog = a.pushLog[len(a.pushLog)-pushHistorySize:]
+	}
+	a.pushMu.Unlock()
+
+	if a.wailsApp != nil {
+		a.wailsApp.Event.Emit(EventGasPush, msg)
+	}
 }
 
 // ---------------- 配置 ----------------
@@ -124,9 +165,12 @@ func (a *App) SaveConfig(cfg store.AppConfig) error {
 		a.logBus.Errorf("配置保存失败: %v", err)
 		return err
 	}
-	a.logBus.Infof("配置已保存：%s:%d %s，桩数量 %d",
-		cfg.Server.Host, cfg.Server.Port, cfg.Server.Version, len(cfg.Piles))
+	a.logBus.Infof("配置已保存：%s:%d %s，充电桩 %d 台 · 加油机 %d 台",
+		cfg.Server.Host, cfg.Server.Port, cfg.Server.Version, len(cfg.Piles), len(cfg.Gas.Dispensers))
 	a.mgr.Apply(cfg)
+	if a.gasMgr != nil {
+		a.gasMgr.Apply(cfg)
+	}
 	return nil
 }
 
@@ -269,6 +313,164 @@ func (a *App) StopCharge(pileID string, gun int) error {
 // SetPlug 插枪 / 拔枪
 func (a *App) SetPlug(pileID string, gun int, plugged bool) error {
 	return a.mgr.SetPlug(pileID, gun, plugged)
+}
+
+// ---------------- 加油站 ----------------
+
+// GetFuelOptions 获取油号目录（含界面区分色）
+func (a *App) GetFuelOptions() []store.FuelOption { return store.FuelOptions() }
+
+// GetDispensers 获取全部油机状态
+func (a *App) GetDispensers() []gas.DispenserView { return a.gasMgr.Snapshot() }
+
+// GetFuelOrders 获取最近加油订单（最新在前）
+func (a *App) GetFuelOrders() []gas.FuelOrder { return a.gasMgr.Orders() }
+
+// GetPushTarget 当前数据推送通道描述
+func (a *App) GetPushTarget() string { return a.gasMgr.PushTarget() }
+
+// GetPushMessages 获取最近的数据推送记录
+func (a *App) GetPushMessages() []gas.PushMessage {
+	a.pushMu.Lock()
+	defer a.pushMu.Unlock()
+	out := make([]gas.PushMessage, len(a.pushLog))
+	copy(out, a.pushLog)
+	return out
+}
+
+// AddDispenser 新增加油机
+func (a *App) AddDispenser(cfg store.DispenserConfig) error {
+	if cfg.DispenserNo == "" {
+		return fmt.Errorf("油机号不能为空")
+	}
+	if cfg.NozzleCount <= 0 {
+		cfg.NozzleCount = 1
+	}
+	cur := a.store.Get()
+	if cfg.ID == "" {
+		cfg.ID = nextDispenserID(cur.Gas.Dispensers)
+	}
+	for _, d := range cur.Gas.Dispensers {
+		if d.ID == cfg.ID {
+			return fmt.Errorf("油机 ID 已存在: %s", cfg.ID)
+		}
+		if d.DispenserNo == cfg.DispenserNo {
+			return fmt.Errorf("油机号已存在: %s", cfg.DispenserNo)
+		}
+	}
+	cfg.Nozzles = store.NormalizeNozzles(cfg.NozzleCount, cfg.Nozzles)
+	cur.Gas.Dispensers = append(cur.Gas.Dispensers, cfg)
+	return a.SaveConfig(cur)
+}
+
+// UpdateDispenser 更新加油机配置
+func (a *App) UpdateDispenser(cfg store.DispenserConfig) error {
+	if cfg.DispenserNo == "" {
+		return fmt.Errorf("油机号不能为空")
+	}
+	if cfg.NozzleCount <= 0 {
+		cfg.NozzleCount = 1
+	}
+	cur := a.store.Get()
+	for i, d := range cur.Gas.Dispensers {
+		if d.ID != cfg.ID {
+			continue
+		}
+		for _, o := range cur.Gas.Dispensers {
+			if o.ID != cfg.ID && o.DispenserNo == cfg.DispenserNo {
+				return fmt.Errorf("油机号已存在: %s", cfg.DispenserNo)
+			}
+		}
+		cfg.Nozzles = store.NormalizeNozzles(cfg.NozzleCount, cfg.Nozzles)
+		cur.Gas.Dispensers[i] = cfg
+		return a.SaveConfig(cur)
+	}
+	return fmt.Errorf("加油机不存在: %s", cfg.ID)
+}
+
+// RemoveDispenser 删除加油机
+func (a *App) RemoveDispenser(id string) error {
+	cur := a.store.Get()
+	rest := make([]store.DispenserConfig, 0, len(cur.Gas.Dispensers))
+	for _, d := range cur.Gas.Dispensers {
+		if d.ID != id {
+			rest = append(rest, d)
+		}
+	}
+	if len(rest) == len(cur.Gas.Dispensers) {
+		return fmt.Errorf("加油机不存在: %s", id)
+	}
+	cur.Gas.Dispensers = rest
+	return a.SaveConfig(cur)
+}
+
+// GenerateDispensers 按「油机台数 × 每台枪数」重新生成油机列表并持久化。
+// 台数 / 枪数仅在生成时使用，结果落在 gas.dispensers，不再单独写入配置文件。
+func (a *App) GenerateDispensers(count, nozzleCount int) error {
+	cur := a.store.Get()
+	cur.Gas.Dispensers = store.GenerateDispensers(count, nozzleCount)
+	return a.SaveConfig(cur)
+}
+
+// StartFuel 开始加油（自动提枪、自动推进、达到定额自动停止并结算）。
+// 发起时同步持久化界面填写内容，下次打开「开始加油」时自动回填。
+func (a *App) StartFuel(req gas.StartFuelRequest) error {
+	cfg := a.store.Get()
+	cfg.Gas.LastStartFuel = lastStartFuel(req)
+	if err := a.store.Save(cfg); err != nil {
+		a.logBus.Errorf("加油表单填写内容保存失败: %v", err)
+	}
+	return a.gasMgr.StartFuel(req)
+}
+
+// StopFuel 停止加油并结算
+func (a *App) StopFuel(dispenserID string, nozzleNo string) error {
+	return a.gasMgr.StopFuel(dispenserID, nozzleNo)
+}
+
+// SetNozzle 提枪 / 挂枪
+func (a *App) SetNozzle(dispenserID string, nozzleNo string, lifted bool) error {
+	return a.gasMgr.SetNozzle(dispenserID, nozzleNo, lifted)
+}
+
+// SetNozzleFault 置故障 / 清除故障
+func (a *App) SetNozzleFault(dispenserID string, nozzleNo string, fault bool) error {
+	return a.gasMgr.SetFault(dispenserID, nozzleNo, fault)
+}
+
+// UpdateNozzleFuel 修改单把油枪油号并持久化
+func (a *App) UpdateNozzleFuel(dispenserID string, nozzleNo string, fuelCode string) error {
+	return a.gasMgr.UpdateNozzleFuel(dispenserID, nozzleNo, fuelCode)
+}
+
+// lastStartFuel 提取开始加油请求中属于用户填写的部分
+func lastStartFuel(req gas.StartFuelRequest) store.StartFuelForm {
+	return store.StartFuelForm{
+		Target: store.FuelTarget{
+			Mode:   req.Target.Mode,
+			Amount: req.Target.Amount,
+			Volume: req.Target.Volume,
+		},
+		CardNo:  req.CardNo,
+		PlateNo: req.PlateNo,
+	}
+}
+
+// nextDispenserID 生成下一个油机内部标识
+func nextDispenserID(list []store.DispenserConfig) string {
+	for i := 1; ; i++ {
+		id := fmt.Sprintf("dispenser-%d", i)
+		used := false
+		for _, d := range list {
+			if d.ID == id {
+				used = true
+				break
+			}
+		}
+		if !used {
+			return id
+		}
+	}
 }
 
 // ---------------- 日志 ----------------

@@ -9,11 +9,13 @@ const props = defineProps<{
   online: number
   total: number
   module: ModuleKey
+  pushTarget?: string
 }>()
 const emit = defineEmits<{
   (e: 'save', cfg: AppConfig): void
   (e: 'startAll'): void
   (e: 'stopAll'): void
+  (e: 'openGasConfig'): void
 }>()
 
 const host = ref('')
@@ -57,16 +59,17 @@ const save = () => {
       </div>
       <div class="leading-tight">
         <div class="text-[13px] font-semibold tracking-wide">
-          {{ props.module === 'charge' ? '充电桩模拟器' : '加油站模拟器' }}
+          设备模拟器
         </div>
         <div class="text-[10px] text-mute">
-          {{ props.module === 'charge' ? '云快充 V1.5 ~ V2.1 设备侧模拟' : '加油机模拟 · 预留模块' }}
+          {{ props.module === 'charge' ? '充电桩 · 云快充 V1.5 ~ V2.1' : '加油机 · 加油流程与数据推送' }}
         </div>
       </div>
     </div>
 
     <div class="w-px h-7 bg-line mx-1" />
 
+    <!-- 充电桩：服务端连接 -->
     <div v-if="props.module === 'charge'" class="flex items-center gap-2 text-[11px]">
       <label class="text-mute">服务端</label>
       <input
@@ -96,6 +99,20 @@ const save = () => {
       </button>
     </div>
 
+    <!-- 加油站：数据推送形式 -->
+    <div v-else class="flex items-center gap-2 text-[11px]">
+      <label class="text-mute">数据推送</label>
+      <span class="px-2 py-1 rounded-md bg-ink-850 border border-line font-mono max-w-[420px] truncate">
+        {{ props.pushTarget || '未启用数据推送' }}
+      </span>
+      <button
+        class="px-2.5 py-1 rounded-md border border-line text-[11px] text-mute hover:text-fg transition"
+        @click="emit('openGasConfig')"
+      >
+        配置
+      </button>
+    </div>
+
     <div class="flex-1" />
 
     <template v-if="props.module === 'charge'">
@@ -118,6 +135,11 @@ const save = () => {
         全部断开
       </button>
     </template>
-    <div v-else class="text-[11px] text-mute">该模块尚未接入服务端，无需连接</div>
+    <template v-else>
+      <div class="flex items-center gap-1.5 text-[11px] text-mute">
+        <span class="w-1.5 h-1.5 rounded-full" :class="online ? 'bg-accent animate-pulse' : 'bg-mute'" />
+        加油机 {{ total }} 台 · 加油中 {{ online }} 枪
+      </div>
+    </template>
   </header>
 </template>

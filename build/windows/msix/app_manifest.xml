@@ -14,9 +14,9 @@
     ProcessorArchitecture="x64" />
   
   <Properties>
-    <DisplayName>充电桩模拟器</DisplayName>
+    <DisplayName>设备模拟器</DisplayName>
     <PublisherDisplayName>CSF</PublisherDisplayName>
-    <Description>云快充协议充电桩设备模拟器</Description>
+    <Description>云快充协议充电桩 / 加油机设备模拟器</Description>
     <Logo>Assets\StoreLogo.png</Logo>
   </Properties>
   
@@ -32,8 +32,8 @@
   <Applications>
     <Application Id="com.csf.vcpp-emulator" Executable="vcpp-emulator.exe" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
-        DisplayName="充电桩模拟器"
-        Description="云快充协议充电桩设备模拟器"
+        DisplayName="设备模拟器"
+        Description="云快充协议充电桩 / 加油机设备模拟器"
         BackgroundColor="transparent"
         Square150x150Logo="Assets\Square150x150Logo.png"
         Square44x44Logo="Assets\Square44x44Logo.png">

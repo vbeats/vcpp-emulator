@@ -1,5 +1,5 @@
 // 应用模块定义：充电桩与加油站两套界面独立并行，通过左侧 tab 切换。
-// 加油站模块当前为预留占位（界面骨架 + 静态示例），协议适配层后续按 internal/ykc 的方式另行接入。
+// 充电桩走云快充协议（TCP 对端为平台服务端）；加油站为本地加油机模拟，数据经 MQTT / HTTP 推送。
 export type ModuleKey = 'charge' | 'gas'
 
 export interface ModuleMeta {
@@ -7,10 +7,9 @@ export interface ModuleMeta {
   label: string
   short: string
   desc: string
-  reserved?: boolean
 }
 
 export const MODULES: ModuleMeta[] = [
   { key: 'charge', label: '充电桩', short: '充', desc: '云快充协议 · 设备侧模拟' },
-  { key: 'gas', label: '加油站', short: '油', desc: '加油机 · 预留模块', reserved: true },
+  { key: 'gas', label: '加油站', short: '油', desc: '加油机加油流程 · 数据推送' },
 ]

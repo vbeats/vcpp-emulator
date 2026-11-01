@@ -11,7 +11,7 @@
     !define INFO_COMPANYNAME "CSF"
 !endif
 !ifndef INFO_PRODUCTNAME
-    !define INFO_PRODUCTNAME "充电桩模拟器"
+    !define INFO_PRODUCTNAME "设备模拟器"
 !endif
 !ifndef INFO_PRODUCTVERSION
     !define INFO_PRODUCTVERSION "1.0.0"

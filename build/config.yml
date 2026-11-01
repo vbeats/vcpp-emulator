@@ -6,9 +6,9 @@ version: '3'
 # This information is used to generate the build assets.
 info:
   companyName: "CSF" # The name of the company
-  productName: "充电桩模拟器" # The name of the application
+  productName: "设备模拟器" # The name of the application
   productIdentifier: "com.csf.vcpp-emulator" # The unique product identifier
-  description: "云快充协议充电桩设备模拟器" # The application description
+  description: "云快充协议充电桩 / 加油机设备模拟器" # The application description
   copyright: "(c) 2026, CSF" # Copyright text
   comments: "云快充 V1.5 ~ V2.1 协议设备侧模拟器" # Comments
   version: "1.0.0" # The application version

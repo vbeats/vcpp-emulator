@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"vcpp-emulator/internal/emu"
+	"vcpp-emulator/internal/gas"
 	"vcpp-emulator/internal/logger"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -20,14 +21,16 @@ var assets embed.FS
 func init() {
 	application.RegisterEvent[logger.Entry]("log")
 	application.RegisterEvent[[]emu.PileView]("state")
+	application.RegisterEvent[[]gas.DispenserView]("gasState")
+	application.RegisterEvent[gas.PushMessage]("gasPush")
 }
 
 func main() {
 	svc := &App{}
 
 	app := application.New(application.Options{
-		Name:        "充电桩模拟器",
-		Description: "云快充协议充电桩设备模拟器",
+		Name:        "设备模拟器",
+		Description: "云快充协议充电桩 / 加油机设备模拟器",
 		Services: []application.Service{
 			application.NewService(svc),
 		},
@@ -43,7 +46,7 @@ func main() {
 	svc.setApp(app)
 
 	app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Title:            "充电桩模拟器 · vcpp-emulator",
+		Title:            "设备模拟器 · vcpp-emulator",
 		Width:            1728,
 		Height:           1080,
 		MinWidth:         1100,

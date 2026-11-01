@@ -6,9 +6,9 @@
 		"0409": {
 			"ProductVersion": "1.0.0",
 			"CompanyName": "CSF",
-			"FileDescription": "云快充协议充电桩设备模拟器",
+			"FileDescription": "云快充协议充电桩 / 加油机设备模拟器",
 			"LegalCopyright": "(c) 2026, CSF",
-			"ProductName": "充电桩模拟器",
+			"ProductName": "设备模拟器",
 			"Comments": "云快充 V1.5 ~ V2.1 协议设备侧模拟器"
 		}
 	}
