@@ -20,7 +20,7 @@
 
 | 层次 | 选型 |
 | --- | --- |
-| 桌面框架 | Wails **v3.0.0**（应用模型：`application.New` + Service + `RegisterEvent`） |
+| 桌面框架 | Wails **v3.1.0**（Go 模块与 `wails3` CLI 版本必须保持一致）（应用模型：`application.New` + Service + `RegisterEvent`） |
 | 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS v4 |
 | 语言 | Go 1.26+ |
 | 构建 | `wails3` CLI + `task`（go-task）驱动 `Taskfile.yml` |
@@ -28,6 +28,10 @@
 
 - 依赖一律使用**各软件最新正式发布版**，禁止 alpha / beta / rc / nightly 等快照版本。
 - 升级依赖后必须重新生成前端绑定并完整构建验证（见「构建与验证」）。
+- 升级 `wails` 时**同步升级 Go 模块与 `wails3` CLI**（`go get github.com/wailsapp/wails/v3@vX.Y.Z` +
+  `go install github.com/wailsapp/wails/v3/cmd/wails3@vX.Y.Z`），并重新生成绑定；两者版本不一致会出现生成产物不匹配。
+- **TypeScript 固定在 5.9.x**：`vue-tsc@3.x` 依赖 `typescript/lib/tsc` 子路径，TypeScript 7 已移除该导出，
+  升级 TS 7 会导致 `vue-tsc` 直接抛 `ERR_PACKAGE_PATH_NOT_EXPORTED`；待 vue-tsc 适配后再升级。
 
 ## 构建与验证
 

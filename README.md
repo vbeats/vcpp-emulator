@@ -15,12 +15,13 @@
 
 | 层次 | 选型 |
 | --- | --- |
-| 桌面框架 | Wails **v3.0.0**（稳定版，非 nightly 快照） |
+| 桌面框架 | Wails **v3.1.0**（稳定版，非 nightly 快照） |
 | 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS v4 |
 | 语言 | Go 1.26+ |
 | 构建目标 | **Windows 11 x64（amd64）**（不考虑低版本 Windows） |
 
 版本策略：wails 与其它依赖均锁定各软件**最新正式发布版**（不含 alpha / beta / nightly 等快照版本）。
+升级 wails 时同步升级 Go 模块与 `wails3` CLI，并重新生成前端绑定；TypeScript 固定 5.9.x（`vue-tsc@3.x` 尚不兼容 TS 7）。
 
 ## 目录结构
 
